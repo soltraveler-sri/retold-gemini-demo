@@ -47,6 +47,20 @@ export interface GenerateOmniVideoResult {
   modelId: typeof OMNI_MODEL_ID;
 }
 
+export type OmniModelErrorCode =
+  | "budget-exceeded"
+  | "upstream-model-error";
+
+export class OmniModelError extends Error {
+  readonly code: OmniModelErrorCode;
+
+  constructor(code: OmniModelErrorCode, message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "OmniModelError";
+    this.code = code;
+  }
+}
+
 function requireApiKey(): string {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -126,8 +140,16 @@ export async function generateOmniVideo(
     },
   });
 
+  if (interaction.status === "budget_exceeded") {
+    throw new OmniModelError(
+      "budget-exceeded",
+      `Gemini Omni interaction ${interaction.id} exhausted its upstream budget.`,
+    );
+  }
+
   if (interaction.status !== "completed") {
-    throw new Error(
+    throw new OmniModelError(
+      "upstream-model-error",
       `Gemini Omni interaction ${interaction.id} ended with status ${interaction.status}.`,
     );
   }
