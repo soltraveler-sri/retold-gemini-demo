@@ -75,13 +75,9 @@ A generative model inventing moments is both the magic and the liability. Faces 
 
 ## What this demo is (v0.1)
 
-One surface: a live mockup of a Google Photos-style library, deployed on Vercel.
+One surface, live on Vercel: a Google Photos-style library you can actually use. Multi-select photos the way you would in Photos, tap the Gemini button, and `gemini-omni-flash-preview` composes them — in chronological order, your photos as the anchor frames — into a short film that plays right there. About a minute, start to finish, on the real model.
 
-- The library is seeded with three sample collections (5–8 photos each), each a different event or theme, clustered chronologically the way real photos land in a camera roll.
-- You multi-select photos the way you would in Photos, then hit the Gemini button.
-- `gemini-omni-flash-preview` generates the film, with your selected photos passed as reference frames, and it plays right in the demo. Usually takes about a minute.
-
-That's the whole demo, deliberately. No uploads, no library management, no accounts. One surface and one magic moment, end to end on the real model.
+Three sample collections are seeded (5–8 photos each, clustered chronologically like a real camera roll) so there's something to generate from immediately. No uploads, no library management — the scope is deliberately one surface and one magic moment. Live generation runs on a paid model, so it's metered per person behind a lightweight email gate; everything else — browsing, the guided walkthrough, and a pre-generated showcase film for each collection — is free and open.
 
 ### A nice touch: generate the camera roll itself
 
@@ -101,13 +97,9 @@ Documented in [prototype_architecture.md](prototype_architecture.md):
 
 ## Under the hood
 
-Next.js on Vercel. Video generation goes through the Gemini API's Interactions API (`gemini-omni-flash-preview`) with the selected photos passed as tagged reference images. The model natively produces multi-shot output, and longer selections are chunked into sequential generations and stitched. Scene generation uses a Gemini image model. Full design, cost controls, and constraints: [prototype_architecture.md](prototype_architecture.md).
+Next.js (App Router) on Vercel, TypeScript, the official `@google/genai` SDK. Video goes through the Gemini Interactions API (`gemini-omni-flash-preview`) with the selected photos passed as tagged reference frames; the model produces multi-shot output natively, and 7–8 photo selections are split at the largest time gap into two generations and stitched with an ffmpeg crossfade. The scene generator chains a Gemini image model (`gemini-3.1-flash-image`) so a typed prompt yields a coherent camera-roll cluster that flows through the exact same film pipeline — no new branch.
 
-The constraints that shape the experience: output is 720p at 24fps, 3 to 10 seconds per generation, and video compute costs about $0.10 per second with no free tier. The demo ships with hard spend caps and a pre-generated showcase mode. The model is in public preview, and person-generation fidelity is the first thing the build validates.
-
-## About this project
-
-A portfolio prototype, and mostly an exercise in how I think about products and how I design UX. The thesis, the feature concept, and the scoping decisions are mine. The implementation is done with AI coding agents working from that direction.
+Because this is a public demo of a paid model (~$0.10/sec of video, no free tier), cost control is real architecture rather than an afterthought: pre-generated showcase films as the free default, spend budgets denominated in dollars and metered per identity in Redis, and a system that fails closed — a misconfigured deploy refuses to spend rather than leaking money. Output is 720p/24fps, 3–10s per generation; the model is in public preview, and person-generation fidelity was the first thing the build validated. Full design, cost model, and the v0.2 seams: [prototype_architecture.md](prototype_architecture.md).
 
 ## What it looks like
 
@@ -129,3 +121,7 @@ real generation, so the whole flow works for free. To exercise real generation
 locally, set `MOCK_OMNI=0` and add a billing-enabled `GEMINI_API_KEY`; the cost
 controls and per-person budgets additionally need Upstash Redis and the access
 vars. Every variable is documented in [`.env.example`](.env.example).
+
+## About this project
+
+A portfolio prototype, and mostly an exercise in how I think about products and how I design UX. The thesis, the feature concept, and the scoping decisions are mine. The implementation is done with AI coding agents working from that direction.
