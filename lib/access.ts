@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { DEFAULT_CONTACT_EMAIL } from "./access-shared";
+
 /**
  * Identity and spend budgets for the demo's paid features.
  *
@@ -37,7 +39,6 @@ export const SCENE_COST_CENTS = 90;
 
 const DEFAULT_ADMIN_MONTHLY_CENTS = 100_00;
 const DEFAULT_GUEST_LIFETIME_CENTS = 15_00;
-const DEFAULT_CONTACT_EMAIL = "hvmerk.work@gmail.com";
 
 export function contactEmail(environment: Environment = process.env): string {
   return environment.CONTACT_EMAIL?.trim() || DEFAULT_CONTACT_EMAIL;

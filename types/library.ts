@@ -1,5 +1,6 @@
 export interface Photo {
   id: string;
+  /** Server-resolvable identifier; `src` is the client-renderable image source. */
   file: string;
   src: string;
   timestamp: string;
