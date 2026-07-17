@@ -23,3 +23,6 @@ scripts/fixtures/*
 *.safetensors
 *.dylib
 *.node
+
+# TypeScript incremental build artifact — never commit
+*.tsbuildinfo
