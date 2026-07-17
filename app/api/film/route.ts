@@ -5,15 +5,25 @@ import {
   FilmError,
   MAX_FILM_REQUEST_BYTES,
   parseFilmRequestBody,
+  resolveFilmSelection,
 } from "../../../lib/film";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-function errorResponse(error: FilmError): Response {
+function responseHeaders(setCookies: readonly string[]): Headers {
+  const headers = new Headers();
+  for (const cookie of setCookies) headers.append("Set-Cookie", cookie);
+  return headers;
+}
+
+function errorResponse(
+  error: FilmError,
+  setCookies: readonly string[] = [],
+): Response {
   return Response.json(
     { error: { code: error.code, message: error.message } },
-    { status: error.status },
+    { status: error.status, headers: responseHeaders(setCookies) },
   );
 }
 
@@ -64,15 +74,26 @@ async function readRequestBody(request: Request): Promise<unknown> {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  let setCookies: readonly string[] = [];
   try {
     const { photoIds } = parseFilmRequestBody(await readRequestBody(request));
-    const capacity = await checkFilmGenerationCapacity();
+    // Reject unknown or cross-collection ids before consuming paid capacity.
+    resolveFilmSelection(photoIds);
+
+    const capacity = await checkFilmGenerationCapacity(request);
+    setCookies = capacity.setCookies;
     if (!capacity.allowed) throw capReachedError(capacity.message);
 
     const film = await createFilm(photoIds);
     const url = new URL(film.url, request.url).toString();
-    return Response.json({ ...film, url }, { status: 201 });
+    return Response.json(
+      { ...film, url },
+      { status: 201, headers: responseHeaders(setCookies) },
+    );
   } catch (error) {
-    return errorResponse(error instanceof FilmError ? error : unexpectedError());
+    return errorResponse(
+      error instanceof FilmError ? error : unexpectedError(),
+      setCookies,
+    );
   }
 }

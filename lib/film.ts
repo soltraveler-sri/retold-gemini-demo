@@ -6,6 +6,11 @@ import { loadCollections } from "./collections";
 import { simulateFilmProgress } from "./film-stages";
 import { storeFilmVideo } from "./film-storage";
 import {
+  checkGenerationCapacity,
+  type CapacityRedis,
+  type GenerationCapacityDecision,
+} from "./generation-capacity";
+import {
   generateOmniVideo,
   OmniModelError,
   writeOmniVideoFile,
@@ -55,9 +60,14 @@ export interface FilmCreationResult {
   shots: readonly [readonly string[]];
 }
 
-export type FilmCapDecision =
-  | { allowed: true }
-  | { allowed: false; message: string };
+export type FilmCapDecision = GenerationCapacityDecision;
+
+export interface FilmCapacityDependencies {
+  environment?: Readonly<Record<string, string | undefined>>;
+  redis?: CapacityRedis;
+  now?: Date;
+  randomVisitorId?: () => string;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -165,9 +175,27 @@ export function isRealOmniEnabled(
   );
 }
 
-/** Issue #7 replaces this allow-all decision with real global/visitor caps. */
-export async function checkFilmGenerationCapacity(): Promise<FilmCapDecision> {
-  return { allowed: true };
+export async function checkFilmGenerationCapacity(
+  request: Request = new Request("http://localhost/api/film"),
+  dependencies: FilmCapacityDependencies = {},
+): Promise<FilmCapDecision> {
+  const environment = dependencies.environment ?? process.env;
+  return checkGenerationCapacity({
+    request,
+    resource: "film",
+    resourceLabel: "film",
+    dailyCapEnvironmentVariable: "DAILY_FILM_CAP",
+    visitorCapEnvironmentVariable: "VISITOR_FILM_CAP",
+    defaultDailyCap: 15,
+    defaultVisitorCap: 2,
+    realGeneration: isRealOmniEnabled(environment),
+    environment,
+    ...(dependencies.redis ? { redis: dependencies.redis } : {}),
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+    ...(dependencies.randomVisitorId
+      ? { randomVisitorId: dependencies.randomVisitorId }
+      : {}),
+  });
 }
 
 export function capReachedError(message: string): FilmError {
