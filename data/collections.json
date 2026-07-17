@@ -1,0 +1,40 @@
+{
+  "collections": [
+    {
+      "id": "garden-afternoon",
+      "title": "Garden afternoon",
+      "photos": [
+        { "id": "garden-01", "src": "", "timestamp": "2026-06-21T15:08:00-04:00", "alt": "Placeholder for the first Garden afternoon photo" },
+        { "id": "garden-02", "src": "", "timestamp": "2026-06-21T15:19:00-04:00", "alt": "Placeholder for the second Garden afternoon photo" },
+        { "id": "garden-03", "src": "", "timestamp": "2026-06-21T16:02:00-04:00", "alt": "Placeholder for the third Garden afternoon photo" },
+        { "id": "garden-04", "src": "", "timestamp": "2026-06-21T16:37:00-04:00", "alt": "Placeholder for the fourth Garden afternoon photo" },
+        { "id": "garden-05", "src": "", "timestamp": "2026-06-21T17:11:00-04:00", "alt": "Placeholder for the fifth Garden afternoon photo" },
+        { "id": "garden-06", "src": "", "timestamp": "2026-06-21T17:42:00-04:00", "alt": "Placeholder for the sixth Garden afternoon photo" }
+      ]
+    },
+    {
+      "id": "coastal-weekend",
+      "title": "Coastal weekend",
+      "photos": [
+        { "id": "coast-01", "src": "", "timestamp": "2026-05-09T09:14:00-04:00", "alt": "Placeholder for the first Coastal weekend photo" },
+        { "id": "coast-02", "src": "", "timestamp": "2026-05-09T09:47:00-04:00", "alt": "Placeholder for the second Coastal weekend photo" },
+        { "id": "coast-03", "src": "", "timestamp": "2026-05-09T11:05:00-04:00", "alt": "Placeholder for the third Coastal weekend photo" },
+        { "id": "coast-04", "src": "", "timestamp": "2026-05-09T12:28:00-04:00", "alt": "Placeholder for the fourth Coastal weekend photo" },
+        { "id": "coast-05", "src": "", "timestamp": "2026-05-09T15:16:00-04:00", "alt": "Placeholder for the fifth Coastal weekend photo" },
+        { "id": "coast-06", "src": "", "timestamp": "2026-05-09T17:51:00-04:00", "alt": "Placeholder for the sixth Coastal weekend photo" },
+        { "id": "coast-07", "src": "", "timestamp": "2026-05-09T19:03:00-04:00", "alt": "Placeholder for the seventh Coastal weekend photo" }
+      ]
+    },
+    {
+      "id": "city-evening",
+      "title": "City evening",
+      "photos": [
+        { "id": "city-01", "src": "", "timestamp": "2026-03-28T18:22:00-04:00", "alt": "Placeholder for the first City evening photo" },
+        { "id": "city-02", "src": "", "timestamp": "2026-03-28T18:49:00-04:00", "alt": "Placeholder for the second City evening photo" },
+        { "id": "city-03", "src": "", "timestamp": "2026-03-28T19:34:00-04:00", "alt": "Placeholder for the third City evening photo" },
+        { "id": "city-04", "src": "", "timestamp": "2026-03-28T20:07:00-04:00", "alt": "Placeholder for the fourth City evening photo" },
+        { "id": "city-05", "src": "", "timestamp": "2026-03-28T21:18:00-04:00", "alt": "Placeholder for the fifth City evening photo" }
+      ]
+    }
+  ]
+}
