@@ -12,6 +12,7 @@ __pycache__/
 .DS_Store
 coverage/
 out/
+.blob-dev/
 scripts/fixtures/*
 !scripts/fixtures/.gitkeep
 *.mp4

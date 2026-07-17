@@ -10,10 +10,12 @@
     "collections:seed": "tsx scripts/seed-collections.ts",
     "fixtures:make": "tsx scripts/make-fixtures.ts",
     "smoke:omni": "tsx scripts/smoke-omni.ts",
+    "test:film": "tsx --test lib/film.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@google/genai": "2.12.0",
+    "@vercel/blob": "2.6.1",
     "next": "16.2.10",
     "react": "19.2.7",
     "react-dom": "19.2.7"
