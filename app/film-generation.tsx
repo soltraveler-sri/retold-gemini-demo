@@ -14,6 +14,10 @@ import type { Collection, Photo } from "../types/library";
 
 const FILM_STORAGE_KEY = "retold.generated-films.v1";
 
+function passthroughImageLoader({ src }: { src: string }): string {
+  return src;
+}
+
 type GenerationErrorKind = "failed" | "capacity" | "network";
 
 interface FilmApiResponse {
@@ -360,14 +364,17 @@ export function useFilmGeneration(
 }
 
 function AnchorImage({ photo }: { photo: Photo }) {
+  const isRemote = photo.src.startsWith("https://");
   return photo.src ? (
     <Image
       alt=""
       className="object-cover"
       draggable={false}
       fill
+      {...(isRemote ? { loader: passthroughImageLoader } : {})}
       sizes="(max-width: 640px) 24vw, 120px"
       src={photo.src}
+      unoptimized={isRemote}
     />
   ) : (
     <div aria-hidden="true" className="placeholder-tile absolute inset-0" />

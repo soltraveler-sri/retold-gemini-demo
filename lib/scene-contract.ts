@@ -1,0 +1,1 @@
+export const MAX_SCENE_PROMPT_LENGTH = 180;

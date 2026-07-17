@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { extname, resolve, sep } from "node:path";
 
 import { loadCollections } from "./collections";
+import { resolveSceneCollection } from "./scene";
 import { simulateFilmProgress } from "./film-stages";
 import { storeFilmVideo } from "./film-storage";
 import {
@@ -116,6 +117,13 @@ export function resolveFilmSelection(
       .map((photo) => ({ collection, photo })),
   );
 
+  if (matches.length === 0) {
+    const sceneCollection = resolveSceneCollection(photoIds);
+    if (sceneCollection) {
+      return { collection: sceneCollection, photos: sceneCollection.photos };
+    }
+  }
+
   if (matches.length !== photoIds.length) {
     throw invalidInput("One or more selected photos are unavailable.");
   }
@@ -203,7 +211,13 @@ export function capReachedError(message: string): FilmError {
 }
 
 function mimeTypeForPhoto(photo: Photo): OmniReferenceImageMimeType {
-  switch (extname(photo.file).toLowerCase()) {
+  let pathname = photo.file;
+  try {
+    pathname = new URL(photo.file).pathname;
+  } catch {
+    // Seeded photos intentionally use root-relative public paths.
+  }
+  switch (extname(pathname).toLowerCase()) {
     case ".jpg":
     case ".jpeg":
       return "image/jpeg";
@@ -228,14 +242,54 @@ function publicFilePath(photo: Photo): string {
   return path;
 }
 
+/** Generated scene photos live in Vercel Blob and nowhere else. */
+const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
+
+/**
+ * Reference images are fetched server-side and fed straight to a paid model, so
+ * an attacker-controlled URL here would turn this route into a free
+ * video-generation proxy (architecture §5.5). Descriptor signatures already
+ * gate which URLs can arrive, but a signature is one mistake away from being
+ * the only defence — this pins the blast radius to our own Blob host.
+ */
+function assertBlobHosted(rawUrl: string): void {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error("Scene photo URL is not a valid URL.");
+  }
+  if (url.protocol !== "https:" || !url.hostname.endsWith(BLOB_HOST_SUFFIX)) {
+    throw new Error("Scene photo URL is not hosted on Vercel Blob.");
+  }
+}
+
 async function loadReferenceImages(
   photos: readonly Photo[],
 ): Promise<readonly OmniReferenceImage[]> {
   return Promise.all(
-    photos.map(async (photo) => ({
-      bytes: await readFile(publicFilePath(photo)),
-      mimeType: mimeTypeForPhoto(photo),
-    })),
+    photos.map(async (photo) => {
+      if (/^https:\/\//u.test(photo.file)) {
+        assertBlobHosted(photo.file);
+        const response = await fetch(photo.file, {
+          cache: "no-store",
+          redirect: "error",
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!response.ok) {
+          throw new Error(`Scene photo returned HTTP ${response.status}.`);
+        }
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.byteLength === 0 || bytes.byteLength > 2 * 1024 * 1024) {
+          throw new Error("Scene photo has an invalid byte length.");
+        }
+        return { bytes, mimeType: mimeTypeForPhoto(photo) };
+      }
+      return {
+        bytes: await readFile(publicFilePath(photo)),
+        mimeType: mimeTypeForPhoto(photo),
+      };
+    }),
   );
 }
 
