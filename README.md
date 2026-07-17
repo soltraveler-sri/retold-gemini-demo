@@ -17,13 +17,13 @@ This repo is a live, working demo of that feature, built on `gemini-omni-flash-p
 
 ## Product thesis — why Google builds this
 
-*This section is the reasoning that led to the prototype, written the way I'd write it for a product review: not "here's a cool AI feature," but why this specific feature, on this specific surface, is strategically overdetermined for Google.*
+*This section is the reasoning that led to the prototype.*
 
 ### Start from an uncomfortable question about Memories
 
-The Memories feature is beloved, but interrogate it honestly: **what is the point — for the user, and for Google?** For the user, it's a pleasant resurfacing of old photos. For Google, it increases user-minutes inside an app that has almost **no natural value capture**. There are no ads in Photos. Core editing and organizing features can't be paywalled — the user expectation for a default photos app is that normal features are free, and violating that expectation would be brand-corrosive. Worse, minutes spent in Photos are minutes *not* spent on surfaces that do capture value.
+The Memories feature is beloved, but interrogate it honestly: **what is the point — for the user, and for Google?** For the user, it's a pleasant resurfacing of old photos. For Google, it increases user-minutes inside an app that has almost **no natural value capture**. There are no ads in Photos. Core editing and organizing features can't be paywalled — the user expectation for a default photos app is that normal features are free, and violating that expectation would be brand-corrosive. Also, minutes spent in Photos are minutes *not* spent on surfaces that do capture value.
 
-So Memories, as it stands, is an **engagement layer driving toward a conversion layer** — and the conversion layer is the interesting design problem. Working forward from that:
+So Memories, as it stands, is an **engagement layer driving toward a conversion layer that doesn't really exist yet** — and the conversion layer is the interesting design problem. Working forward from that:
 
 1. **Photos' baseline features must stay free.** That's the contract with the user, and Google has honored it (Magic Eraser, Unblur, and Portrait Light all went free in 2024).
 2. **Therefore the conversion layer must be a category users already expect and tolerate paying for.** You can't invent a new tolerance; you have to borrow an existing one.
@@ -39,9 +39,7 @@ I arrived at this reasoning independently, and the market check confirmed it's p
 - **Video Remix** (July 8, 2026): Gemini Omni-powered video restyling, and **the first Photos feature hard-gated to paid AI tiers** — not available on free at all. Compute-cost monetization, layered on top of the storage-tier base that already drives 150M+ Google One subscribers.
 - The paywall line is being actively tuned in both directions (personalized image generation went *free* in June 2026, Video Remix went *paid-only* nine days later) — this is a company experimenting in production with exactly the free/paid boundary described above.
 
-The ladder is visible: **one photo → one video** (shipped), **one video → restyled video** (shipped, paywalled), **many photos → one film** (missing). The missing rung is also the most emotionally valuable one, and the market is validating it in real time: Reelful (a16z Speedrun, launched July 15, 2026) charges $15–$100/month for a camera-roll-to-video app; a cluster of AI wedding-montage startups (Mootion, Frameo, Vidio) monetizes the single strongest use case. These startups are fighting for distribution and model access. **Google owns both** — the library where the photos already live, and the model (Gemini Omni) that generates the film.
-
-To be clear about positioning: I don't assume Google hasn't thought of this — it's the natural next rung on a ladder they're clearly climbing, and it's likely somewhere in a queue. The point of this prototype isn't priority claim; it's to demonstrate, concretely, what the experience should feel like and where the hard product problems are.
+The ladder is visible: **one photo → one video** (shipped), **one video → restyled video** (shipped, paywalled), **many photos → one film** (missing). The missing rung is also the most emotionally valuable one.
 
 ### The feature, in one paragraph
 
