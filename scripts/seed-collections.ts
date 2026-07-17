@@ -36,7 +36,7 @@ interface CliOptions {
   force: boolean;
 }
 
-const SHARED_PHOTO_RULES = `Make one clearly synthetic, photorealistic 16:9 landscape event photograph, not a collage or contact sheet. Natural skin texture, documentary camera language, believable available light, and centered-safe composition for responsive cropping. Every person shown must unmistakably be an adult. The people must be fictional and must not resemble real people or public figures. No children, no text, no captions, no watermarks, no logos, no brand marks.`;
+const SHARED_PHOTO_RULES = `Make one clearly synthetic, photorealistic 16:9 landscape event photograph, not a collage or contact sheet. Natural skin texture, documentary camera language, believable available light, and centered-safe composition for responsive cropping. Every person shown must unmistakably be an adult. The people must be entirely fictional with ordinary, unremarkable, everyday features. They must not resemble any real person, celebrity, actor, musician, politician, or public figure, living or dead. Avoid conventionally famous or model-like faces. No children, no text, no captions, no watermarks, no logos, no brand marks.`;
 
 const COLLECTIONS: readonly SeedCollection[] = [
   {
@@ -73,7 +73,7 @@ const COLLECTIONS: readonly SeedCollection[] = [
     photos: [
       {
         id: "birthday-01",
-        prompt: `${SHARED_PHOTO_RULES}\nEstablish an adults-only 42nd birthday supper in a lived-in city loft at 5 p.m. Show exactly two recurring fictional adults setting a long dinner table: the birthday host, a 42-year-old South Asian man with medium-brown skin, an angular face, salt-and-pepper curls, a short neat beard, and a rust corduroy overshirt over a cream T-shirt; and his 39-year-old white female partner with fair freckled skin, a copper chin-length bob, a teal satin blouse, and small silver earrings. They arrange blood oranges, coral napkins, candles, and a small citrus cake beneath paper garlands. Broad late-afternoon window light, coral, amber, and teal palette. Both faces clearly visible. This establishes exact identity, proportions, clothing, and setting for a sequential chain.`,
+        prompt: `${SHARED_PHOTO_RULES}\nEstablish an adults-only 42nd birthday supper in a lived-in city loft at 5 p.m. Show exactly two recurring fictional adults setting a long dinner table: the birthday host, a 45-year-old Latino man with olive skin, a broad round face, thick dark hair receding slightly at the temples, heavy black-framed glasses, clean-shaven, and a rust corduroy overshirt over a cream T-shirt; and his 47-year-old Black female partner with deep brown skin, a soft square jaw, close-cropped greying natural hair, a teal satin blouse, and small silver earrings. They arrange blood oranges, coral napkins, candles, and a small citrus cake beneath paper garlands. Broad late-afternoon window light, coral, amber, and teal palette. Both faces clearly visible. This establishes exact identity, proportions, clothing, and setting for a sequential chain.`,
       },
       {
         id: "birthday-02",

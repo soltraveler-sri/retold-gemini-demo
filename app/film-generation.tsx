@@ -578,6 +578,57 @@ export function GeneratedFilmShelf({
   );
 }
 
+export function ShowcaseFilmCard({
+  collection,
+  onOpen,
+}: {
+  collection: Collection;
+  onOpen: () => void;
+}) {
+  const anchors = collection.photos.slice(0, 3);
+
+  return (
+    <div className="showcase-card mt-4 overflow-hidden rounded-[20px] border border-[#8c5746]/20 bg-[#f5eee9] sm:mt-5">
+      <div className="flex flex-col gap-4 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+        <div className="flex min-w-0 items-center gap-3.5">
+          <span className="relative grid h-[72px] w-[96px] shrink-0 grid-cols-3 overflow-hidden rounded-[12px] bg-[#25231f] shadow-[0_7px_22px_rgba(72,48,40,0.14)]">
+            {anchors.map((photo) => (
+              <span className="relative" key={photo.id}>
+                <AnchorImage photo={photo} />
+              </span>
+            ))}
+            <span className="absolute inset-0 grid place-items-center bg-[#6f4436]/20 text-white">
+              <span className="grid size-9 place-items-center rounded-full border border-white/30 bg-[#6f4436]/85 shadow-lg">
+                <span className="size-4"><PlayMark /></span>
+              </span>
+            </span>
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.19em] text-[#8c5746]">
+              Pre-generated example
+            </span>
+            <span className="mt-1 block font-editorial text-xl leading-6 tracking-[-0.025em] sm:text-2xl">
+              See how this moment could move
+            </span>
+            <span className="mt-1 block text-xs leading-5 text-[#6e6961]">
+              A ready-made preview from these seeded photos — never from your selection.
+            </span>
+          </span>
+        </div>
+        <button
+          className="showcase-film-action shrink-0 self-start sm:self-auto"
+          onClick={onOpen}
+          type="button"
+        >
+          <span aria-hidden="true">▶</span>
+          Watch an example film
+          <span className="showcase-zero-cost">Free · instant</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ReplayIcon() {
   return (
     <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
@@ -597,14 +648,18 @@ function DownloadIcon() {
 export function FilmLightbox({
   film,
   collection,
+  mode = "generated",
   onClose,
 }: {
-  film: GeneratedFilm;
+  film: Pick<GeneratedFilm, "filmId" | "photoIds" | "url">;
   collection: Collection | undefined;
+  mode?: "generated" | "showcase";
   onClose: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const [videoError, setVideoError] = useState(false);
+  const isShowcase = mode === "showcase";
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -640,8 +695,12 @@ export function FilmLightbox({
       <div className="m-auto w-full max-w-6xl overflow-hidden rounded-[24px] border border-white/10 bg-[#25231f] text-white shadow-[0_35px_100px_rgba(0,0,0,0.48)] sm:rounded-[30px]">
         <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3.5 sm:px-6 sm:py-4">
           <div className="min-w-0">
-            <p className="truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-[#ddb09b]">{collection?.title ?? "Your moment"}</p>
-            <h2 className="mt-0.5 font-editorial text-xl tracking-[-0.02em] sm:text-2xl" id="film-player-title">Your film</h2>
+            <p className="truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-[#ddb09b]">
+              {isShowcase ? "Pre-generated example" : collection?.title ?? "Your moment"}
+            </p>
+            <h2 className="mt-0.5 font-editorial text-xl tracking-[-0.02em] sm:text-2xl" id="film-player-title">
+              {isShowcase ? `${collection?.title ?? "Example"} — example film` : "Your film"}
+            </h2>
           </div>
           <button
             aria-label="Close film"
@@ -654,35 +713,62 @@ export function FilmLightbox({
           </button>
         </div>
 
-        <div className="bg-black">
-          <video
-            autoPlay
-            className="mx-auto block max-h-[68vh] w-full bg-black object-contain"
-            controls
-            playsInline
-            preload="metadata"
-            ref={videoRef}
-            src={film.url}
-          >
-            Your browser does not support the video element.
-          </video>
+        <div className="grid min-h-[min(68vh,560px)] place-items-center bg-black">
+          {videoError ? (
+            <div className="max-w-md px-6 py-16 text-center" role="status">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#ddb09b]">
+                {isShowcase ? "Preview coming soon" : "Playback unavailable"}
+              </p>
+              <p className="mt-3 font-editorial text-3xl tracking-[-0.03em]">
+                {isShowcase
+                  ? "This example film is not available yet."
+                  : "This film could not be loaded."}
+              </p>
+              <p className="mt-3 text-sm leading-6 text-white/55">
+                {isShowcase
+                  ? "The photos are ready to explore. The pre-generated film can be added later without changing this page."
+                  : "Close the player and try opening the film again."}
+              </p>
+            </div>
+          ) : (
+            <video
+              autoPlay
+              className="mx-auto block max-h-[68vh] w-full bg-black object-contain"
+              controls
+              onError={() => setVideoError(true)}
+              playsInline
+              preload="metadata"
+              ref={videoRef}
+              src={film.url}
+            >
+              Your browser does not support the video element.
+            </video>
+          )}
         </div>
 
         <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#ddb09b]">Generated with Gemini Omni (preview)</p>
-            <p className="mt-1 text-xs text-white/50">Built from {film.photoIds.length} selected {film.photoIds.length === 1 ? "photo" : "photos"}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#ddb09b]">
+              {isShowcase ? "Pre-generated with Gemini Omni (preview)" : "Generated with Gemini Omni (preview)"}
+            </p>
+            <p className="mt-1 text-xs text-white/50">
+              {isShowcase
+                ? `A ready-made example from all ${film.photoIds.length} seeded photos — not your selection`
+                : `Built from ${film.photoIds.length} selected ${film.photoIds.length === 1 ? "photo" : "photos"}`}
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="dark-film-action" onClick={replay} type="button">
-              <span className="size-4"><ReplayIcon /></span>
-              Replay
-            </button>
-            <a className="dark-film-action" download={`retold-${film.filmId}.mp4`} href={film.url}>
-              <span className="size-4"><DownloadIcon /></span>
-              Download
-            </a>
-          </div>
+          {!videoError ? (
+            <div className="flex items-center gap-2">
+              <button className="dark-film-action" onClick={replay} type="button">
+                <span className="size-4"><ReplayIcon /></span>
+                Replay
+              </button>
+              <a className="dark-film-action" download={`retold-${film.filmId}.mp4`} href={film.url}>
+                <span className="size-4"><DownloadIcon /></span>
+                Download
+              </a>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

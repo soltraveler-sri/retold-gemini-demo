@@ -27,3 +27,4 @@ scripts/fixtures/*
 
 # TypeScript incremental build artifact — never commit
 *.tsbuildinfo
+.vercel

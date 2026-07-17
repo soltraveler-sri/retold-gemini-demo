@@ -14,6 +14,7 @@ import {
   FilmLightbox,
   GeneratedFilmShelf,
   GenerationOverlay,
+  ShowcaseFilmCard,
   useFilmGeneration,
 } from "./film-generation";
 import type { Collection, Photo } from "../types/library";
@@ -283,6 +284,9 @@ export function LibraryView({
 }) {
   const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
   const [capWasHit, setCapWasHit] = useState(false);
+  const [activeShowcaseCollectionId, setActiveShowcaseCollectionId] = useState<
+    string | null
+  >(null);
   const selectionRef = useRef<SelectionState>(EMPTY_SELECTION);
   const dragRef = useRef<DragState | null>(null);
   const lastAnchorRef = useRef<{ collectionId: string; index: number } | null>(
@@ -303,6 +307,9 @@ export function LibraryView({
   );
   const activeCollection = collections.find(
     (collection) => collection.id === selection.collectionId,
+  );
+  const activeShowcaseCollection = collections.find(
+    (collection) => collection.id === activeShowcaseCollectionId,
   );
   const selectedCount = selection.photoIds.length;
   const showCapHint = selectedCount >= MAX_SELECTED_PHOTOS || capWasHit;
@@ -519,12 +526,22 @@ export function LibraryView({
               to move again.
             </h1>
           </div>
-          <div className="max-w-xs sm:pb-1 sm:text-right">
+          <div className="max-w-sm sm:pb-1 sm:text-right">
             <p className="text-sm leading-6 text-[#6e6961]">
-              Choose a few frames from one moment, then let Gemini carry the
-              memory between them.
+              New here? Begin with a ready-made example, then choose a few
+              frames to create a film of your own.
             </p>
-            <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#3f3b35]">
+            <button
+              className="mt-4 inline-flex items-center gap-2 border-b border-[#8c5746]/35 pb-1 text-[12px] font-semibold text-[#8c5746] transition hover:border-[#8c5746] hover:text-[#6f4436] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8c5746]"
+              onClick={() =>
+                setActiveShowcaseCollectionId(collections[0]?.id ?? null)
+              }
+              type="button"
+            >
+              <span aria-hidden="true">▶</span>
+              Watch an example first
+            </button>
+            <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#3f3b35]">
               {collections.length} moments · {photoCount} photos
             </p>
           </div>
@@ -571,6 +588,10 @@ export function LibraryView({
                   />
                 ))}
               </div>
+              <ShowcaseFilmCard
+                collection={collection}
+                onOpen={() => setActiveShowcaseCollectionId(collection.id)}
+              />
               <GeneratedFilmShelf
                 collection={collection}
                 films={filmGeneration.films.filter(
@@ -658,6 +679,19 @@ export function LibraryView({
           )}
           film={filmGeneration.activeFilm}
           onClose={filmGeneration.closeFilm}
+        />
+      ) : null}
+
+      {activeShowcaseCollection ? (
+        <FilmLightbox
+          collection={activeShowcaseCollection}
+          film={{
+            filmId: `showcase-${activeShowcaseCollection.id}`,
+            photoIds: activeShowcaseCollection.photos.map((photo) => photo.id),
+            url: activeShowcaseCollection.showcaseFilm,
+          }}
+          mode="showcase"
+          onClose={() => setActiveShowcaseCollectionId(null)}
         />
       ) : null}
     </main>
