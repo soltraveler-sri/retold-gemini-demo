@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -17,17 +18,16 @@ import {
   ShowcaseFilmCard,
   useFilmGeneration,
 } from "./film-generation";
+import { SceneGenerator } from "./scene-generator";
 import type { Collection, Photo } from "../types/library";
 
 export const MAX_SELECTED_PHOTOS = 6;
 
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-  weekday: "long",
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-  timeZone: "UTC",
-});
+const SCENE_STORAGE_KEY = "retold.scene-collections.v1";
+
+function passthroughImageLoader({ src }: { src: string }): string {
+  return src;
+}
 
 interface SelectionState {
   collectionId: string | null;
@@ -54,9 +54,53 @@ const EMPTY_SELECTION: SelectionState = {
   photoIds: [],
 };
 
-function formatClusterDate(timestamp: string): string {
-  const dateKey = timestamp.slice(0, 10);
-  return dateFormatter.format(new Date(`${dateKey}T12:00:00Z`));
+function isStoredSceneCollection(value: unknown): value is Collection {
+  if (typeof value !== "object" || value === null) return false;
+  const collection = value as Partial<Collection>;
+  return (
+    typeof collection.id === "string" &&
+    collection.id.startsWith("scene-") &&
+    typeof collection.title === "string" &&
+    typeof collection.dateLabel === "string" &&
+    typeof collection.promptTemplate === "string" &&
+    collection.showcaseFilm === "" &&
+    Array.isArray(collection.photos) &&
+    collection.photos.length >= 5 &&
+    collection.photos.length <= 6 &&
+    collection.photos.every(
+      (photo) =>
+        typeof photo === "object" &&
+        photo !== null &&
+        typeof photo.id === "string" &&
+        photo.id.startsWith("scene.v1.") &&
+        typeof photo.file === "string" &&
+        typeof photo.src === "string" &&
+        photo.file === photo.src &&
+        (/^\/collections\//u.test(photo.src) ||
+          /^https:\/\/[^/]+\.blob\.vercel-storage\.com\//u.test(photo.src)) &&
+        typeof photo.timestamp === "string" &&
+        typeof photo.alt === "string",
+    )
+  );
+}
+
+function readStoredSceneCollections(): readonly Collection[] {
+  try {
+    const value: unknown = JSON.parse(
+      sessionStorage.getItem(SCENE_STORAGE_KEY) ?? "[]",
+    );
+    return Array.isArray(value) ? value.filter(isStoredSceneCollection) : [];
+  } catch {
+    return [];
+  }
+}
+
+function storeSceneCollections(collections: readonly Collection[]): void {
+  try {
+    sessionStorage.setItem(SCENE_STORAGE_KEY, JSON.stringify(collections));
+  } catch {
+    // The generated scene remains available in memory when storage is unavailable.
+  }
 }
 
 function RetoldMark() {
@@ -190,6 +234,7 @@ function photoIndexAtPoint(
 
 function PhotoSurface({ photo, index }: { photo: Photo; index: number }) {
   if (photo.src) {
+    const isRemote = photo.src.startsWith("https://");
     return (
       <Image
         alt={photo.alt}
@@ -197,8 +242,10 @@ function PhotoSurface({ photo, index }: { photo: Photo; index: number }) {
         // Native image drag would hijack the pointer and break drag-select.
         draggable={false}
         fill
+        {...(isRemote ? { loader: passthroughImageLoader } : {})}
         sizes="(min-width: 1024px) 16vw, (min-width: 640px) 33vw, 50vw"
         src={photo.src}
+        unoptimized={isRemote}
       />
     );
   }
@@ -283,6 +330,8 @@ export function LibraryView({
   collections: readonly Collection[];
 }) {
   const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
+  const [libraryCollections, setLibraryCollections] =
+    useState<readonly Collection[]>(collections);
   const [capWasHit, setCapWasHit] = useState(false);
   const [activeShowcaseCollectionId, setActiveShowcaseCollectionId] = useState<
     string | null
@@ -293,22 +342,32 @@ export function LibraryView({
     null,
   );
 
+  useEffect(() => {
+    const stored = readStoredSceneCollections();
+    setLibraryCollections([
+      ...collections,
+      ...stored.filter(
+        (scene) => !collections.some((collection) => collection.id === scene.id),
+      ),
+    ]);
+  }, [collections]);
+
   const photoCount = useMemo(
     () =>
-      collections.reduce(
+      libraryCollections.reduce(
         (total, collection) => total + collection.photos.length,
         0,
       ),
-    [collections],
+    [libraryCollections],
   );
   const selectedIds = useMemo(
     () => new Set(selection.photoIds),
     [selection.photoIds],
   );
-  const activeCollection = collections.find(
+  const activeCollection = libraryCollections.find(
     (collection) => collection.id === selection.collectionId,
   );
-  const activeShowcaseCollection = collections.find(
+  const activeShowcaseCollection = libraryCollections.find(
     (collection) => collection.id === activeShowcaseCollectionId,
   );
   const selectedCount = selection.photoIds.length;
@@ -354,7 +413,7 @@ export function LibraryView({
         return;
       }
 
-      const collection = collections.find((item) => item.id === collectionId);
+      const collection = libraryCollections.find((item) => item.id === collectionId);
       if (!collection) return;
 
       event.preventDefault();
@@ -392,7 +451,7 @@ export function LibraryView({
       dragRef.current = drag;
       applyDrag(drag, index);
     },
-    [applyDrag, collections],
+    [applyDrag, libraryCollections],
   );
 
   const handlePointerMove = useCallback(
@@ -432,7 +491,7 @@ export function LibraryView({
 
   const handleKeyboardToggle = useCallback(
     (collectionId: string, index: number) => {
-      const collection = collections.find((item) => item.id === collectionId);
+      const collection = libraryCollections.find((item) => item.id === collectionId);
       const photo = collection?.photos[index];
       if (!collection || !photo) return;
 
@@ -455,7 +514,25 @@ export function LibraryView({
 
       lastAnchorRef.current = { collectionId, index };
     },
-    [collections, commitSelection],
+    [libraryCollections, commitSelection],
+  );
+
+  const handleSceneCreated = useCallback(
+    (collection: Collection) => {
+      clearSelection();
+      setLibraryCollections((current) => {
+        const next = [...current.filter((item) => item.id !== collection.id), collection];
+        storeSceneCollections(next.filter((item) => item.id.startsWith("scene-")));
+        return next;
+      });
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById(`${collection.id}-date`)
+          ?.closest("section")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    },
+    [clearSelection],
   );
 
   const handleCreate = useCallback(() => {
@@ -534,7 +611,7 @@ export function LibraryView({
             <button
               className="mt-4 inline-flex items-center gap-2 border-b border-[#8c5746]/35 pb-1 text-[12px] font-semibold text-[#8c5746] transition hover:border-[#8c5746] hover:text-[#6f4436] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8c5746]"
               onClick={() =>
-                setActiveShowcaseCollectionId(collections[0]?.id ?? null)
+                setActiveShowcaseCollectionId(libraryCollections[0]?.id ?? null)
               }
               type="button"
             >
@@ -542,13 +619,13 @@ export function LibraryView({
               Watch an example first
             </button>
             <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#3f3b35]">
-              {collections.length} moments · {photoCount} photos
+              {libraryCollections.length} moments · {photoCount} photos
             </p>
           </div>
         </section>
 
         <div className="space-y-16 sm:space-y-20">
-          {collections.map((collection) => (
+          {libraryCollections.map((collection) => (
             <section
               aria-labelledby={`${collection.id}-date`}
               key={collection.id}
@@ -562,7 +639,7 @@ export function LibraryView({
                     className="font-editorial text-[clamp(1.6rem,3vw,2.25rem)] tracking-[-0.025em]"
                     id={`${collection.id}-date`}
                   >
-                    {formatClusterDate(collection.photos[0]!.timestamp)}
+                    {collection.dateLabel}
                   </h2>
                 </div>
                 <span className="pb-1 text-[11px] font-medium text-[#8a857d]">
@@ -588,10 +665,12 @@ export function LibraryView({
                   />
                 ))}
               </div>
-              <ShowcaseFilmCard
-                collection={collection}
-                onOpen={() => setActiveShowcaseCollectionId(collection.id)}
-              />
+              {collection.showcaseFilm ? (
+                <ShowcaseFilmCard
+                  collection={collection}
+                  onOpen={() => setActiveShowcaseCollectionId(collection.id)}
+                />
+              ) : null}
               <GeneratedFilmShelf
                 collection={collection}
                 films={filmGeneration.films.filter(
@@ -602,6 +681,11 @@ export function LibraryView({
             </section>
           ))}
         </div>
+
+        <SceneGenerator
+          disabled={filmGeneration.isGenerating}
+          onCreated={handleSceneCreated}
+        />
 
         <section className="mt-20 border-t border-[#25231f]/10 pt-10 sm:mt-28 sm:flex sm:items-start sm:justify-between">
           <p className="font-editorial text-2xl tracking-[-0.02em]">
@@ -674,7 +758,7 @@ export function LibraryView({
 
       {filmGeneration.activeFilm ? (
         <FilmLightbox
-          collection={collections.find(
+          collection={libraryCollections.find(
             (collection) => collection.id === filmGeneration.activeFilm?.collectionId,
           )}
           film={filmGeneration.activeFilm}
