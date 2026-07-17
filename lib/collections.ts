@@ -23,9 +23,11 @@ function readPhoto(value: unknown, path: string): Photo {
     throw new Error(`${path} must be an object.`);
   }
 
-  const photo = {
+  const file = readString(value, "file", path);
+  const photo: Photo = {
     id: readString(value, "id", path),
-    src: readString(value, "src", path),
+    file,
+    src: file,
     timestamp: readString(value, "timestamp", path),
     alt: readString(value, "alt", path),
   };
@@ -49,6 +51,8 @@ function readCollection(value: unknown, index: number): Collection {
   return {
     id: readString(value, "id", path),
     title: readString(value, "title", path),
+    dateLabel: readString(value, "dateLabel", path),
+    promptTemplate: readString(value, "promptTemplate", path),
     photos: value.photos.map((photo, photoIndex) =>
       readPhoto(photo, `${path}.photos[${photoIndex}]`),
     ),

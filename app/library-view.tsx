@@ -8,6 +8,8 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+import Image from "next/image";
+
 import type { Collection, Photo } from "../types/library";
 
 export const MAX_SELECTED_PHOTOS = 6;
@@ -182,11 +184,13 @@ function photoIndexAtPoint(
 function PhotoSurface({ photo, index }: { photo: Photo; index: number }) {
   if (photo.src) {
     return (
-      <img
+      <Image
         alt={photo.alt}
-        className="absolute inset-0 size-full object-cover"
+        className="object-cover"
+        // Native image drag would hijack the pointer and break drag-select.
         draggable={false}
-        loading="lazy"
+        fill
+        sizes="(min-width: 1024px) 16vw, (min-width: 640px) 33vw, 50vw"
         src={photo.src}
       />
     );
