@@ -2,6 +2,7 @@ import {
   clearSessionCookie,
   contactEmail,
   readIdentity,
+  redisCredentials,
   signIn,
 } from "../../../lib/access";
 
@@ -19,12 +20,12 @@ const SIGN_IN_MAX_ATTEMPTS = 10;
 type ThrottleResult = "ok" | "rate-limited" | "unavailable";
 
 async function throttleSignIn(request: Request): Promise<ThrottleResult> {
-  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
   // No Redis means no way to bound guesses at the access code, and no way to
   // meter spend either — so refuse. Report it as unavailable rather than
   // pretending the visitor did something wrong.
-  if (!url || !token) return "unavailable";
+  const credentials = redisCredentials();
+  if (!credentials) return "unavailable";
+  const { url, token } = credentials;
 
   const ip =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||

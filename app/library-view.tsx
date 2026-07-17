@@ -27,7 +27,7 @@ import {
 import { SceneGenerator } from "./scene-generator";
 import type { Collection, Photo } from "../types/library";
 
-export const MAX_SELECTED_PHOTOS = 6;
+export const MAX_SELECTED_PHOTOS = 8;
 
 const SCENE_STORAGE_KEY = "retold.scene-collections.v1";
 
@@ -768,7 +768,7 @@ export function LibraryView({
               className="cap-hint absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-[#8c5746]/15 bg-[#f5eee9] px-3 py-1 text-[10px] font-semibold text-[#8c5746] shadow-[0_3px_12px_rgba(87,62,52,0.08)]"
               role="status"
             >
-              Up to {MAX_SELECTED_PHOTOS} photos for now
+              Up to {MAX_SELECTED_PHOTOS} photos · 7–8 renders two shots
             </p>
           ) : null}
         </div>

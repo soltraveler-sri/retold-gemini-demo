@@ -64,7 +64,15 @@ const COLLECTIONS: readonly SeedCollection[] = [
       },
       {
         id: "wedding-06",
-        prompt: `${SHARED_PHOTO_RULES}\nCreate the final chronological photograph from the exact same wedding at 10 p.m. Preserve the exact identity, faces, age, hair, body proportions, wedding clothing, and jewelry of the same two newlyweds. They stand together at the courtyard gate during an adults-only sparkler send-off, looking back toward the camera with sparklers forming warm points behind them, never crossing their faces. Wide cinematic documentary composition, dark ink-blue sky, warm skin tones, coherent stone inn and flowers. This is unmistakably the final night image of the same event.`,
+        prompt: `${SHARED_PHOTO_RULES}\nCreate the next chronological photograph from the exact same wedding at 10 p.m. Preserve the exact identity, faces, age, hair, body proportions, wedding clothing, and jewelry of the same two newlyweds. They stand together at the courtyard gate during an adults-only sparkler send-off, looking back toward the camera with sparklers forming warm points behind them, never crossing their faces. Wide cinematic documentary composition, dark ink-blue sky, warm skin tones, coherent stone inn and flowers.`,
+      },
+      {
+        id: "wedding-07",
+        prompt: `${SHARED_PHOTO_RULES}\nCreate the next photograph a little after the send-off, from the exact same wedding. Preserve the exact identity, faces, age, hair, body proportions, wedding clothing, and jewelry of the same two newlyweds. They walk away down the lantern-lit gravel lane beyond the courtyard gate, seen from behind and three-quarters so both faces remain readable as they glance at each other, the last sparklers and adult guests soft and out of focus far behind them. Deep night, ink-blue sky, warm lantern pools on the gravel, coherent stone inn. Quiet and unposed.`,
+      },
+      {
+        id: "wedding-08",
+        prompt: `${SHARED_PHOTO_RULES}\nCreate the final chronological photograph from the exact same wedding, near midnight. Preserve the exact identity, faces, age, hair, body proportions, wedding clothing, and jewelry of the same two newlyweds. Away from the party, they stop alone beneath an olive tree at the lane's end and rest their foreheads together, laughing quietly with their eyes closed; both faces clearly visible in profile. The inn glows small and warm in the distance. Intimate medium shot, deep blue night, a single warm lantern, ivory, clay, green, and honey palette. This is unmistakably the last image of the same night.`,
       },
     ],
   },

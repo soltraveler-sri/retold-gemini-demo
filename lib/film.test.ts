@@ -1,19 +1,31 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { issueSessionCookie } from "./access";
 
 import {
+  buildChunkPrompt,
   buildFilmPrompt,
   capReachedError,
   checkFilmGenerationCapacity,
   FilmError,
   filmErrorFromOmniFailure,
+  filmCostCents,
   isRealOmniEnabled,
+  PART_ONE_CONTINUITY_HINT,
+  PART_TWO_CONTINUITY_HINT,
   parseFilmRequestBody,
   resolveFilmSelection,
+  splitFilmPhotos,
 } from "./film";
-import { FILM_PROGRESS_STAGES, simulateFilmProgress } from "./film-stages";
+import {
+  FILM_PROGRESS_STAGES,
+  TWO_CHUNK_FILM_PROGRESS_STAGES,
+  simulateFilmProgress,
+  simulateTwoChunkFilmProgress,
+} from "./film-stages";
+import { stitchFilmClips } from "./film-stitch";
 import type {
   CapacityRedis,
   CapacityReservation,
@@ -127,14 +139,14 @@ function expectInvalidInput(run: () => unknown): FilmError {
   throw new Error("Expected invalid input.");
 }
 
-test("request parser accepts only 1–6 unique manifest ids", () => {
+test("request parser accepts only 1–8 unique manifest ids", () => {
   assert.deepEqual(parseFilmRequestBody({ photoIds: ["birthday-01"] }), {
     photoIds: ["birthday-01"],
   });
   expectInvalidInput(() => parseFilmRequestBody({ photoIds: [] }));
   expectInvalidInput(() =>
     parseFilmRequestBody({
-      photoIds: ["a", "b", "c", "d", "e", "f", "g"],
+      photoIds: ["a", "b", "c", "d", "e", "f", "g", "h", "i"],
     }),
   );
   expectInvalidInput(() =>
@@ -169,6 +181,25 @@ test("selection order is chronological and prompt tags are zero-indexed", () => 
     buildFilmPrompt(selection.collection.promptTemplate, 3).split("\n")[0],
     "[# References <IMAGE_REF_0>@Image1 <IMAGE_REF_1>@Image2 <IMAGE_REF_2>@Image3]",
   );
+
+  const basePhoto = selection.photos[0]!;
+  const timestamps = [0, 10, 20, 30, 180, 190, 200, 210];
+  const eightPhotos = timestamps.map((minutes, index) => ({
+    ...basePhoto,
+    id: `synthetic-${index + 1}`,
+    timestamp: new Date(Date.UTC(2026, 0, 1, 12, minutes)).toISOString(),
+  }));
+  const chunks = splitFilmPhotos(eightPhotos);
+  assert.equal(chunks.length, 2);
+  assert.deepEqual(
+    chunks.map((chunk) => chunk.map((photo) => photo.id)),
+    [
+      ["synthetic-1", "synthetic-2", "synthetic-3", "synthetic-4"],
+      ["synthetic-5", "synthetic-6", "synthetic-7", "synthetic-8"],
+    ],
+  );
+  assert.ok(buildChunkPrompt("{{REFERENCE_TAGS}}", 4, 1).endsWith(PART_ONE_CONTINUITY_HINT));
+  assert.ok(buildChunkPrompt("{{REFERENCE_TAGS}}", 4, 2).endsWith(PART_TWO_CONTINUITY_HINT));
 });
 
 test("paid Omni access requires both the explicit real flag and a key", () => {
@@ -237,6 +268,27 @@ test("mock progress uses staged delays totaling 20–40 seconds", async () => {
     maximum.reduce((total, stage) => total + stage.durationMs, 0),
     40_000,
   );
+
+  const twoChunkDurations: number[] = [];
+  const twoChunk = await simulateTwoChunkFilmProgress(
+    () => 0,
+    async (durationMs) => {
+      twoChunkDurations.push(durationMs);
+    },
+  );
+  assert.deepEqual(
+    twoChunkDurations,
+    TWO_CHUNK_FILM_PROGRESS_STAGES.map((stage) => stage.minDurationMs),
+  );
+  assert.deepEqual(
+    twoChunk.map((stage) => stage.id),
+    ["preparing", "generating-part-one", "generating-part-two", "finalizing"],
+  );
+
+  const cannedClip = await readFile("public/mock/sample-film.mp4");
+  const stitched = await stitchFilmClips(cannedClip, cannedClip);
+  assert.equal(Buffer.from(stitched.subarray(4, 8)).toString("ascii"), "ftyp");
+  assert.ok(stitched.byteLength > 0);
 });
 
 test("anonymous visitors are refused before any paid call", async () => {
@@ -405,6 +457,17 @@ test("Redis keys carry the UTC date and a hashed identity, never a raw email", a
   );
   assert.match(reservation.budgetKey, /^retold:budget:(admin|guest):/);
   assert.equal(reservation.costCents, 100);
+
+  const twoChunk = await checkFilmGenerationCapacity(
+    signedInRequest("203.0.113.78"),
+    {
+      ...fixedCapacityDependencies(redis, capacityEnvironment()),
+      photoCount: 8,
+    },
+  );
+  assert.equal(twoChunk.allowed, true);
+  assert.equal(redis.reservations.at(-1)?.costCents, 200);
+  assert.equal(filmCostCents(8), 200);
 });
 
 test("the Upstash adapter reserves the cap and the budget in one EVAL command", async () => {

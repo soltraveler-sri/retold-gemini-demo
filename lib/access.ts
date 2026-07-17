@@ -265,3 +265,24 @@ export function authSecretOrNull(
 ): string | null {
   return authSecret(environment);
 }
+
+/**
+ * The Upstash REST credentials, under either name.
+ *
+ * Vercel's Upstash-for-Redis integration provisions `KV_REST_API_URL` /
+ * `KV_REST_API_TOKEN`; Upstash's own console calls the same REST endpoint
+ * `UPSTASH_REDIS_REST_URL` / `_TOKEN`. Same store, same protocol, two
+ * conventions — accept both rather than make the deployment depend on which
+ * route the operator took.
+ */
+export function redisCredentials(
+  environment: Environment = process.env,
+): { url: string; token: string } | null {
+  const url =
+    environment.UPSTASH_REDIS_REST_URL?.trim() ||
+    environment.KV_REST_API_URL?.trim();
+  const token =
+    environment.UPSTASH_REDIS_REST_TOKEN?.trim() ||
+    environment.KV_REST_API_TOKEN?.trim();
+  return url && token ? { url, token } : null;
+}
