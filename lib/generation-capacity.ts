@@ -13,6 +13,7 @@ import {
   budgetTtlSeconds,
   issueSessionCookie,
   readIdentity,
+  redisCredentials,
   type AccessDenial,
   type Identity,
 } from "./access";
@@ -397,8 +398,9 @@ export async function checkGenerationCapacity(
     environment[options.dailyCapEnvironmentVariable],
     options.defaultDailyCap,
   );
-  const url = environment.UPSTASH_REDIS_REST_URL?.trim();
-  const token = environment.UPSTASH_REDIS_REST_TOKEN?.trim();
+  const redis_ = redisCredentials(environment);
+  const url = redis_?.url;
+  const token = redis_?.token;
 
   // Fail closed: a misconfigured demo must never mean unmetered spend.
   if (!config.configured || !secret || dailyCap === null || !url || !token) {

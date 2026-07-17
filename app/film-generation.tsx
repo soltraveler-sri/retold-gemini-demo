@@ -9,7 +9,11 @@ import {
   type RefObject,
 } from "react";
 
-import { FILM_PROGRESS_STAGES } from "../lib/film-stages";
+import {
+  FILM_PROGRESS_STAGES,
+  TWO_CHUNK_FILM_PROGRESS_STAGES,
+  type FilmProgressStage,
+} from "../lib/film-stages";
 import type { Collection, Photo } from "../types/library";
 
 const FILM_STORAGE_KEY = "retold.generated-films.v1";
@@ -79,7 +83,7 @@ interface FilmGenerationController {
 }
 
 const STAGE_COPY: Record<
-  (typeof FILM_PROGRESS_STAGES)[number]["id"],
+  FilmProgressStage["id"],
   { eyebrow: string; title: string; note: string }
 > = {
   preparing: {
@@ -91,6 +95,16 @@ const STAGE_COPY: Record<
     eyebrow: "Building the movement",
     title: "Composing shots…",
     note: "Your selected frames are becoming the anchors of one connected scene.",
+  },
+  "generating-part-one": {
+    eyebrow: "Rendering shot one of two",
+    title: "Opening the story…",
+    note: "Gemini is composing the earlier anchors and holding a visual thread for the second shot.",
+  },
+  "generating-part-two": {
+    eyebrow: "Rendering shot two of two",
+    title: "Continuing the story…",
+    note: "Gemini is carrying the same people, light, and movement into the later anchors.",
   },
   finalizing: {
     eyebrow: "Bringing it home",
@@ -140,7 +154,15 @@ function storeFilms(films: readonly GeneratedFilm[]): void {
   }
 }
 
-function sampleStageDuration(stage: (typeof FILM_PROGRESS_STAGES)[number]): number {
+function progressStagesForPhotoCount(
+  photoCount: number,
+): readonly FilmProgressStage[] {
+  return photoCount > 6
+    ? TWO_CHUNK_FILM_PROGRESS_STAGES
+    : FILM_PROGRESS_STAGES;
+}
+
+function sampleStageDuration(stage: FilmProgressStage): number {
   return (
     stage.minDurationMs +
     Math.floor(Math.random() * (stage.maxDurationMs - stage.minDurationMs + 1))
@@ -221,7 +243,8 @@ export function useFilmGeneration(
     });
 
     let elapsed = 0;
-    FILM_PROGRESS_STAGES.slice(0, -1).forEach((stage, stageIndex) => {
+    const progressStages = progressStagesForPhotoCount(selection.photos.length);
+    progressStages.slice(0, -1).forEach((stage, stageIndex) => {
       elapsed += sampleStageDuration(stage);
       timersRef.current.push(
         window.setTimeout(() => {
@@ -447,7 +470,8 @@ export function GenerationOverlay({
   onRetry: () => void;
 }) {
   const actionRef = useRef<HTMLButtonElement>(null);
-  const stage = FILM_PROGRESS_STAGES[generation.stageIndex] ?? FILM_PROGRESS_STAGES[0];
+  const progressStages = progressStagesForPhotoCount(generation.photos.length);
+  const stage = progressStages[generation.stageIndex] ?? progressStages[0]!;
   const copy = STAGE_COPY[stage.id];
   const errorCopy = generation.error ? ERROR_COPY[generation.error.kind] : null;
 
@@ -479,7 +503,9 @@ export function GenerationOverlay({
             </p>
           </div>
           <p className="mt-3 text-[11px] font-medium text-[#8a857d] sm:mt-0">
-            Usually ready in under a minute
+            {generation.photos.length > 6
+              ? "Usually ready in about two minutes"
+              : "Usually ready in under a minute"}
           </p>
         </div>
 
@@ -513,7 +539,7 @@ export function GenerationOverlay({
 
             {generation.status === "progress" ? (
               <div className="mt-7 flex items-center justify-center gap-2" role="status">
-                {FILM_PROGRESS_STAGES.map((item, index) => (
+                {progressStages.map((item, index) => (
                   <span
                     aria-hidden="true"
                     className="generation-stage-dot"

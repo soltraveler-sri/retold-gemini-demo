@@ -78,9 +78,11 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const { photoIds } = parseFilmRequestBody(await readRequestBody(request));
     // Reject unknown or cross-collection ids before consuming paid capacity.
-    resolveFilmSelection(photoIds);
+    const selection = resolveFilmSelection(photoIds);
 
-    const capacity = await checkFilmGenerationCapacity(request);
+    const capacity = await checkFilmGenerationCapacity(request, {
+      photoCount: selection.photos.length,
+    });
     setCookies = capacity.setCookies;
     if (!capacity.allowed) throw filmErrorFromDenial(capacity);
 

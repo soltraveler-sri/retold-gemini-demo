@@ -4,7 +4,11 @@ import { extname, resolve, sep } from "node:path";
 
 import { loadCollections } from "./collections";
 import { resolveSceneCollection } from "./scene";
-import { simulateFilmProgress } from "./film-stages";
+import {
+  simulateFilmProgress,
+  simulateTwoChunkFilmProgress,
+} from "./film-stages";
+import { stitchFilmClips } from "./film-stitch";
 import { storeFilmVideo } from "./film-storage";
 import { FILM_COST_CENTS } from "./access";
 import {
@@ -22,8 +26,14 @@ import {
 } from "./omni";
 import type { Collection, Photo } from "../types/library";
 
-export const MAX_FILM_PHOTOS = 6;
+export const MAX_FILM_PHOTOS = 8;
 export const MAX_FILM_REQUEST_BYTES = 4_096;
+export const SINGLE_CHUNK_MAX_PHOTOS = 6;
+
+export const PART_ONE_CONTINUITY_HINT =
+  "CONTINUITY — PART ONE OF TWO: End on a calm, visually stable moment that preserves the recurring people, facial identity, wardrobe, setting, lighting direction, color, and camera movement for a seamless handoff into part two. Do not add an ending title, fade, or resolution.";
+export const PART_TWO_CONTINUITY_HINT =
+  "CONTINUITY — PART TWO OF TWO: Continue directly from part one's final moment. Preserve the same recurring people, facial identity, wardrobe, setting, lighting direction, color, and camera movement; begin with a visually stable continuation before progressing through these later reference photos. Do not recap part one or add a title.";
 
 const REFERENCE_TAGS_PLACEHOLDER = "{{REFERENCE_TAGS}}";
 const PUBLIC_DIRECTORY = resolve(process.cwd(), "public");
@@ -64,7 +74,7 @@ export interface ResolvedFilmSelection {
 export interface FilmCreationResult {
   filmId: string;
   url: string;
-  shots: readonly [readonly string[]];
+  shots: readonly (readonly string[])[];
 }
 
 export type FilmCapDecision = GenerationCapacityDecision;
@@ -74,6 +84,7 @@ export interface FilmCapacityDependencies {
   redis?: CapacityRedis;
   now?: Date;
   randomVisitorId?: () => string;
+  photoCount?: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -180,6 +191,66 @@ export function buildFilmPrompt(
   return `${parts[0]}${buildReferenceTags(photoCount)}${parts[1]}`;
 }
 
+export function filmChunkCount(photoCount: number): 1 | 2 {
+  if (
+    !Number.isInteger(photoCount) ||
+    photoCount < 1 ||
+    photoCount > MAX_FILM_PHOTOS
+  ) {
+    throw invalidInput(
+      `Film photo count must be between 1 and ${MAX_FILM_PHOTOS}.`,
+    );
+  }
+  return photoCount > SINGLE_CHUNK_MAX_PHOTOS ? 2 : 1;
+}
+
+export function filmCostCents(photoCount: number): number {
+  return FILM_COST_CENTS * filmChunkCount(photoCount);
+}
+
+/**
+ * The selection is already chronological. Only boundaries that keep both
+ * chunks within Omni's six-reference golden limit are eligible.
+ */
+export function splitFilmPhotos(
+  photos: readonly Photo[],
+): readonly [readonly Photo[]] | readonly [readonly Photo[], readonly Photo[]] {
+  if (photos.length <= SINGLE_CHUNK_MAX_PHOTOS) return [photos];
+  filmChunkCount(photos.length);
+
+  const firstEligibleBoundary = photos.length - SINGLE_CHUNK_MAX_PHOTOS;
+  const lastEligibleBoundary = SINGLE_CHUNK_MAX_PHOTOS;
+  let splitIndex = firstEligibleBoundary;
+  let largestGapMs = Number.NEGATIVE_INFINITY;
+
+  for (
+    let boundary = firstEligibleBoundary;
+    boundary <= lastEligibleBoundary;
+    boundary += 1
+  ) {
+    const previous = photos[boundary - 1];
+    const next = photos[boundary];
+    if (!previous || !next) continue;
+    const gapMs = Date.parse(next.timestamp) - Date.parse(previous.timestamp);
+    if (gapMs > largestGapMs) {
+      largestGapMs = gapMs;
+      splitIndex = boundary;
+    }
+  }
+
+  return [photos.slice(0, splitIndex), photos.slice(splitIndex)];
+}
+
+export function buildChunkPrompt(
+  promptTemplate: string,
+  photoCount: number,
+  part: 1 | 2,
+): string {
+  const continuityHint =
+    part === 1 ? PART_ONE_CONTINUITY_HINT : PART_TWO_CONTINUITY_HINT;
+  return `${buildFilmPrompt(promptTemplate, photoCount)}\n${continuityHint}`;
+}
+
 export function isRealOmniEnabled(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): boolean {
@@ -203,7 +274,7 @@ export async function checkFilmGenerationCapacity(
     defaultDailyCap: 15,
     defaultVisitorCap: 2,
     realGeneration: isRealOmniEnabled(environment),
-    costCents: FILM_COST_CENTS,
+    costCents: filmCostCents(dependencies.photoCount ?? 1),
     environment,
     ...(dependencies.redis ? { redis: dependencies.redis } : {}),
     ...(dependencies.now ? { now: dependencies.now } : {}),
@@ -351,6 +422,104 @@ async function createVideoBytes(
   }
 }
 
+interface GeneratedChunk {
+  bytes: Uint8Array;
+  interactionId: string;
+  wallClockMs: number;
+}
+
+async function generateChunk(
+  selection: ResolvedFilmSelection,
+  photos: readonly Photo[],
+  part: 1 | 2,
+): Promise<GeneratedChunk> {
+  const result = await generateOmniVideo({
+    referenceImages: await loadReferenceImages(photos),
+    prompt: buildChunkPrompt(
+      selection.collection.promptTemplate,
+      photos.length,
+      part,
+    ),
+  });
+  const bytes = await materializeOmniVideo(result.video);
+  console.info(
+    "[film] Omni chunk completed:",
+    JSON.stringify({
+      part,
+      interactionId: result.interactionId,
+      wallClockMs: result.wallClockMs,
+      outputBytes: bytes.byteLength,
+    }),
+  );
+  return {
+    bytes,
+    interactionId: result.interactionId,
+    wallClockMs: result.wallClockMs,
+  };
+}
+
+async function createTwoChunkVideoBytes(
+  selection: ResolvedFilmSelection,
+  chunks: readonly [readonly Photo[], readonly Photo[]],
+): Promise<Uint8Array> {
+  if (!isRealOmniEnabled()) {
+    await simulateTwoChunkFilmProgress();
+    const cannedClip = await readFile(MOCK_FILM_PATH);
+    return stitchFilmClips(cannedClip, cannedClip);
+  }
+
+  const startedAt = performance.now();
+  let first: GeneratedChunk;
+  try {
+    first = await generateChunk(selection, chunks[0], 1);
+  } catch (error) {
+    throw filmErrorFromOmniFailure(error);
+  }
+
+  let second: GeneratedChunk;
+  try {
+    second = await generateChunk(selection, chunks[1], 2);
+  } catch (error) {
+    // Part one is paid output. It remains recoverable in Gemini because every
+    // interaction uses store:true, and this log makes that fact auditable.
+    console.error(
+      "[film] Part two failed after paid part one succeeded:",
+      JSON.stringify({
+        retainedInteractionId: first.interactionId,
+        partOneWallClockMs: first.wallClockMs,
+        partOneBytes: first.bytes.byteLength,
+      }),
+    );
+    throw filmErrorFromOmniFailure(error);
+  }
+
+  try {
+    const stitched = await stitchFilmClips(first.bytes, second.bytes);
+    console.info(
+      "[film] Two-chunk film completed:",
+      JSON.stringify({
+        interactionIds: [first.interactionId, second.interactionId],
+        generationWallClockMs: first.wallClockMs + second.wallClockMs,
+        endToEndWallClockMs: Math.round(performance.now() - startedAt),
+      }),
+    );
+    return stitched;
+  } catch (error) {
+    console.error(
+      "[film] ffmpeg assembly failed after both paid chunks succeeded:",
+      JSON.stringify({
+        interactionIds: [first.interactionId, second.interactionId],
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    throw new FilmError(
+      "upstream-model-error",
+      502,
+      "The generated film could not be assembled. Please try again.",
+    );
+  }
+}
+
 export function filmErrorFromOmniFailure(error: unknown): FilmError {
   // The client only ever sees a user-safe message, but the operator needs the
   // real cause: without this, a failed generation is indistinguishable from any
@@ -394,18 +563,44 @@ export async function createFilm(
   photoIds: readonly string[],
 ): Promise<FilmCreationResult> {
   const selection = resolveFilmSelection(photoIds);
-  const prompt = buildFilmPrompt(
-    selection.collection.promptTemplate,
-    selection.photos.length,
-  );
-  const videoBytes = await createVideoBytes(selection, prompt);
+
+  // This is intentionally the original ≤6 golden path, unchanged: one prompt,
+  // one createVideoBytes call, one upload, and one returned shot.
+  if (selection.photos.length <= SINGLE_CHUNK_MAX_PHOTOS) {
+    const prompt = buildFilmPrompt(
+      selection.collection.promptTemplate,
+      selection.photos.length,
+    );
+    const videoBytes = await createVideoBytes(selection, prompt);
+
+    try {
+      const stored = await storeFilmVideo(videoBytes);
+      return {
+        filmId: stored.filmId,
+        url: stored.url,
+        shots: [selection.photos.map((photo) => photo.id)],
+      };
+    } catch {
+      throw new FilmError(
+        "upstream-model-error",
+        502,
+        "The generated film could not be saved. Please try again.",
+      );
+    }
+  }
+
+  const chunks = splitFilmPhotos(selection.photos);
+  if (chunks.length !== 2) {
+    throw new Error("Two-chunk film planning did not produce two chunks.");
+  }
+  const videoBytes = await createTwoChunkVideoBytes(selection, chunks);
 
   try {
     const stored = await storeFilmVideo(videoBytes);
     return {
       filmId: stored.filmId,
       url: stored.url,
-      shots: [selection.photos.map((photo) => photo.id)],
+      shots: chunks.map((chunk) => chunk.map((photo) => photo.id)),
     };
   } catch {
     throw new FilmError(

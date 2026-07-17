@@ -8,6 +8,7 @@ import {
   issueSessionCookie,
   readIdentity,
   resolveTier,
+  redisCredentials,
   signIn,
   SESSION_COOKIE,
 } from "./access";
@@ -95,4 +96,33 @@ test("budgets: guest is one-time, admin resets monthly", () => {
   assert.ok(budgetKey(admin, "secret", now).endsWith(":2026-07"));
   assert.ok(!budgetKey(guest, "secret", now).includes("2026-07"));
   assert.ok(!budgetKey(guest, "secret", now).includes("alice@example.com"), "email must be hashed");
+});
+
+test("Redis credentials are accepted under either provisioning convention", () => {
+  // Vercel's Upstash integration sets KV_REST_API_*; Upstash's own console
+  // calls the identical REST endpoint UPSTASH_REDIS_REST_*. Same store.
+  assert.deepEqual(
+    redisCredentials({ KV_REST_API_URL: "https://x.upstash.io", KV_REST_API_TOKEN: "t" }),
+    { url: "https://x.upstash.io", token: "t" },
+  );
+  assert.deepEqual(
+    redisCredentials({ UPSTASH_REDIS_REST_URL: "https://y.upstash.io", UPSTASH_REDIS_REST_TOKEN: "u" }),
+    { url: "https://y.upstash.io", token: "u" },
+  );
+  // An explicit UPSTASH_* value wins over the Vercel-provisioned one.
+  assert.equal(
+    redisCredentials({
+      UPSTASH_REDIS_REST_URL: "https://explicit.upstash.io",
+      UPSTASH_REDIS_REST_TOKEN: "u",
+      KV_REST_API_URL: "https://vercel.upstash.io",
+      KV_REST_API_TOKEN: "t",
+    })?.url,
+    "https://explicit.upstash.io",
+  );
+  assert.equal(redisCredentials({}), null, "no credentials must fail closed");
+  assert.equal(
+    redisCredentials({ KV_REST_API_URL: "https://x.upstash.io" }),
+    null,
+    "a half-configured store must fail closed",
+  );
 });
