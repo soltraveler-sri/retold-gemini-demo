@@ -53,6 +53,7 @@ function readCollection(value: unknown, index: number): Collection {
     title: readString(value, "title", path),
     dateLabel: readString(value, "dateLabel", path),
     promptTemplate: readString(value, "promptTemplate", path),
+    showcaseFilm: readString(value, "showcaseFilm", path),
     photos: value.photos.map((photo, photoIndex) =>
       readPhoto(photo, `${path}.photos[${photoIndex}]`),
     ),

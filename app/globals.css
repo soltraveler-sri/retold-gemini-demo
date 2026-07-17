@@ -364,6 +364,50 @@ body {
   background: rgba(255, 255, 255, 0.11);
 }
 
+.showcase-card {
+  box-shadow: inset 3px 0 0 rgba(140, 87, 70, 0.42);
+}
+
+.showcase-film-action {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  border: 1px solid rgba(111, 68, 54, 0.38);
+  border-radius: 999px;
+  background: transparent;
+  padding: 9px 13px;
+  color: #6f4436;
+  font-size: 12px;
+  font-weight: 650;
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.showcase-film-action:hover {
+  transform: translateY(-1px);
+  border-color: rgba(111, 68, 54, 0.62);
+  background: rgba(140, 87, 70, 0.08);
+}
+
+.showcase-film-action:focus-visible {
+  outline: 2px solid #8c5746;
+  outline-offset: 3px;
+}
+
+.showcase-zero-cost {
+  border-left: 1px solid rgba(111, 68, 54, 0.22);
+  padding-left: 7px;
+  color: #8c5746;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 .primary-film-action:focus-visible,
 .secondary-film-action:focus-visible,
 .dark-film-action:focus-visible {
@@ -446,7 +490,8 @@ body {
   .generation-stage-dot,
   .primary-film-action,
   .secondary-film-action,
-  .dark-film-action {
+  .dark-film-action,
+  .showcase-film-action {
     transition-duration: 0.01ms !important;
   }
 

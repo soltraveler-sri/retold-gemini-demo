@@ -11,5 +11,6 @@ export interface Collection {
   title: string;
   dateLabel: string;
   promptTemplate: string;
+  showcaseFilm: string;
   photos: readonly Photo[];
 }
