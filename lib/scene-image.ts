@@ -40,16 +40,33 @@ function requireApiKey(): string {
   return apiKey;
 }
 
-function isRefusal(error: unknown): boolean {
+/**
+ * A genuine content refusal, as opposed to any other 400.
+ *
+ * This deliberately matches the model's actual refusal signature rather than
+ * loose words. The previous pattern included `safety` and `policy`, which meant
+ * a `400 The parameter 'safety_settings' is not available...` — a plain
+ * configuration error — was reported to visitors as "we can't make that scene
+ * safely". The wrong error text hid a total outage behind a plausible-sounding
+ * refusal, and made innocuous prompts look like the visitor's fault.
+ *
+ * Observed refusal shape (docs/smoke-findings.md):
+ *   400 Input blocked: Sorry, we can't create videos with real people's names
+ *       or likenesses.
+ *
+ * If in doubt, treat it as an upstream error: "something went wrong, try again"
+ * is honest about an unknown, whereas "your prompt was unsafe" is an accusation.
+ */
+export function isRefusal(error: unknown): boolean {
   const text = error instanceof Error
     ? `${error.name} ${error.message} ${String(error.cause ?? "")}`
     : String(error);
-  return /(?:input blocked|blocked|likeness|real people|real person|safety|policy|prohibited|refus)/iu.test(
+  return /(?:input blocked|blocked by|content policy violation|can't create (?:videos|images) with|real people's names or likenesses|prohibited_content|safety_?filter|blocked_reason)/iu.test(
     text,
   );
 }
 
-function isTransient(error: unknown): boolean {
+export function isTransient(error: unknown): boolean {
   const text = error instanceof Error
     ? `${error.name} ${error.message} ${String(error.cause ?? "")}`
     : String(error);
@@ -88,13 +105,11 @@ async function createInteractionWithRetry(
         background: false,
         stream: false,
         response_modalities: ["image"],
-        safety_settings: [
-          { type: "hate_speech", threshold: "block_low_and_above" },
-          { type: "dangerous_content", threshold: "block_low_and_above" },
-          { type: "harassment", threshold: "block_low_and_above" },
-          { type: "sexually_explicit", threshold: "block_low_and_above" },
-          { type: "jailbreak", threshold: "block_low_and_above" },
-        ],
+        // NOTE: `safety_settings` is NOT available on the Gemini API — it is a
+        // Gemini Enterprise Agent Platform parameter. Sending it makes EVERY
+        // request fail with a 400. Content is constrained by the system prompt
+        // above plus the model's own default safety, which is what actually
+        // blocked a likeness during seeding (see docs/smoke-findings.md).
         response_format: {
           type: "image",
           mime_type: "image/jpeg",
