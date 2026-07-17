@@ -1,4 +1,6 @@
-# Gemini Omni × Google Photos: turning selected photos into film
+# Retold, a Gemini demo
+
+*Gemini Omni × Google Photos: turning selected photos into film*
 
 **A working prototype of a feature Google Photos doesn't have yet: select a handful of photos from your library, the same way you already multi-select to delete or share, tap one Gemini button, and get back a short generative film of that moment in your life.**
 

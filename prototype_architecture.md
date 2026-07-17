@@ -1,4 +1,4 @@
-# Prototype Architecture — Gemini Omni × Google Photos demo
+# Prototype Architecture — Retold, a Gemini demo
 
 High-level design for the v0.1 prototype, plus the v0.2 feature set (designed here, deliberately not shipped in the 0→1 sprint). Companion to the [README](README.md), which carries the product thesis; this doc carries the system.
 
