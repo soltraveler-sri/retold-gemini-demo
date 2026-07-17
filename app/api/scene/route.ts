@@ -7,6 +7,7 @@ import {
   parseSceneRequestBody,
   SceneError,
   sceneCapReachedError,
+  sceneErrorFromDenial,
 } from "../../../lib/scene";
 import {
   generateSceneImages,
@@ -152,7 +153,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const capacity = await checkSceneGenerationCapacity(request);
     setCookies = capacity.setCookies;
-    if (!capacity.allowed) throw sceneCapReachedError(capacity.message);
+    if (!capacity.allowed) throw sceneErrorFromDenial(capacity);
 
     let sources: readonly string[];
     if (isRealSceneEnabled()) {

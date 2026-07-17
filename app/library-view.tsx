@@ -11,6 +11,8 @@ import {
 
 import Image from "next/image";
 
+import { AccessNudge, useAccess } from "./access-gate";
+
 import {
   FilmLightbox,
   GeneratedFilmShelf,
@@ -539,14 +541,38 @@ export function LibraryView({
     [clearSelection],
   );
 
+  const { access, refresh: refreshAccess } = useAccess();
+  const [nudge, setNudge] = useState<{ creditMessage?: string | undefined } | null>(null);
+
+  // The server is the authority: if it refuses for access or credit reasons,
+  // show the nudge rather than a generic failure overlay.
+  const serverDenial = filmGeneration.generation?.error;
+  useEffect(() => {
+    if (serverDenial?.kind === "access") {
+      setNudge({});
+      void refreshAccess();
+    } else if (serverDenial?.kind === "credit") {
+      setNudge({
+        creditMessage:
+          "You've used your full demo credit. The library, the walkthrough, and the example films are still yours to explore — email me if you'd like more.",
+      });
+    }
+  }, [refreshAccess, serverDenial]);
+
   const handleCreate = useCallback(() => {
     if (!activeCollection || !selection.photoIds.length) return;
+    // Nudge immediately rather than spending a round-trip to be told no. The
+    // server still gates every paid call; this is only to keep the UI honest.
+    if (!access.signedIn) {
+      setNudge({});
+      return;
+    }
     const photos = selection.photoIds
       .map((id) => activeCollection.photos.find((photo) => photo.id === id))
       .filter((photo): photo is Photo => Boolean(photo));
     if (!photos.length) return;
     startGeneration({ collection: activeCollection, photos });
-  }, [activeCollection, selection.photoIds, startGeneration]);
+  }, [access.signedIn, activeCollection, selection.photoIds, startGeneration]);
 
   return (
     <main className="min-h-screen bg-[#fbfaf7] text-[#25231f]">
@@ -685,6 +711,8 @@ export function LibraryView({
         </div>
 
         <SceneGenerator
+          signedIn={access.signedIn}
+          onAccessRequired={(creditMessage) => setNudge({ creditMessage })}
           disabled={filmGeneration.isGenerating}
           onCreated={handleSceneCreated}
         />
@@ -750,11 +778,25 @@ export function LibraryView({
         </div>
       )}
 
-      {filmGeneration.generation ? (
+      {filmGeneration.generation &&
+      filmGeneration.generation.error?.kind !== "access" &&
+      filmGeneration.generation.error?.kind !== "credit" ? (
         <GenerationOverlay
           generation={filmGeneration.generation}
           onDismiss={filmGeneration.dismissError}
           onRetry={filmGeneration.retry}
+        />
+      ) : null}
+
+      {nudge ? (
+        <AccessNudge
+          access={access}
+          creditExhaustedMessage={nudge.creditMessage}
+          onClose={() => setNudge(null)}
+          onSignedIn={() => void refreshAccess()}
+          // A visitor who cannot generate should still get to see what it does,
+          // so the nudge offers the walkthrough alongside asking for access.
+          onWatchWalkthrough={() => openGuidedWalkthrough(activeCollection?.id)}
         />
       ) : null}
 

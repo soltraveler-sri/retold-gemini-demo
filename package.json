@@ -11,6 +11,8 @@
     "fixtures:make": "tsx scripts/make-fixtures.ts",
     "smoke:omni": "tsx scripts/smoke-omni.ts",
     "test:film": "tsx --test lib/film.test.ts",
+    "test:access": "tsx --test lib/access.test.ts",
+    "test": "tsx --test lib/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

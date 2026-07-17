@@ -4,6 +4,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 
+import { SCENE_COST_CENTS } from "./access";
 import {
   checkGenerationCapacity,
   type CapacityRedis,
@@ -27,6 +28,8 @@ type Environment = Readonly<Record<string, string | undefined>>;
 export type SceneErrorCode =
   | "invalid-input"
   | "cap-reached"
+  | "auth-required"
+  | "credit-exhausted"
   | "refused"
   | "upstream-model-error";
 
@@ -132,6 +135,7 @@ export async function checkSceneGenerationCapacity(
     defaultDailyCap: 60,
     defaultVisitorCap: 4,
     realGeneration: isRealSceneEnabled(environment),
+    costCents: SCENE_COST_CENTS,
     environment,
     ...(dependencies.redis ? { redis: dependencies.redis } : {}),
     ...(dependencies.now ? { now: dependencies.now } : {}),
@@ -359,4 +363,17 @@ export function resolveSceneCollection(
 
 export function sceneCapReachedError(message: string): SceneError {
   return new SceneError("cap-reached", 429, message);
+}
+
+export function sceneErrorFromDenial(decision: {
+  denial: string;
+  message: string;
+}): SceneError {
+  if (decision.denial === "auth-required") {
+    return new SceneError("auth-required", 401, decision.message);
+  }
+  if (decision.denial === "budget-exhausted") {
+    return new SceneError("credit-exhausted", 402, decision.message);
+  }
+  return new SceneError("cap-reached", 429, decision.message);
 }

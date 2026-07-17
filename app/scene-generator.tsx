@@ -56,9 +56,14 @@ function sceneEndpoint(): string {
 export function SceneGenerator({
   disabled,
   onCreated,
+  signedIn,
+  onAccessRequired,
 }: {
   disabled: boolean;
   onCreated: (collection: Collection) => void;
+  /** Scene generation costs real money, so it is gated like film generation. */
+  signedIn: boolean;
+  onAccessRequired: (creditMessage?: string) => void;
 }) {
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -77,6 +82,11 @@ export function SceneGenerator({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    // Nudge before spending a round-trip; the server still gates the real call.
+    if (!signedIn) {
+      onAccessRequired();
+      return;
+    }
     if (disabled || isGenerating || !prompt.trim()) return;
     setError(null);
     setProgressIndex(0);
@@ -89,6 +99,15 @@ export function SceneGenerator({
       });
       const payload: unknown = await response.json().catch(() => ({}));
       if (!response.ok) {
+        const code = (payload as SceneApiError).error?.code;
+        if (response.status === 401 || code === "auth-required") {
+          onAccessRequired();
+          return;
+        }
+        if (code === "credit-exhausted") {
+          onAccessRequired((payload as SceneApiError).error?.message);
+          return;
+        }
         const message = (payload as SceneApiError).error?.message;
         throw new Error(
           typeof message === "string"
