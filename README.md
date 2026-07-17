@@ -101,3 +101,13 @@ The constraints that shape the experience: output is 720p at 24fps, 3 to 10 seco
 ## About this project
 
 A portfolio prototype, and mostly an exercise in how I think about products and how I design UX. The thesis, the feature concept, and the scoping decisions are mine. The implementation is done with AI coding agents working from that direction.
+
+## Run locally
+
+```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). The library shell does not require API credentials; add local values only when working on later generation features.
