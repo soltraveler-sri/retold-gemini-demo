@@ -29,13 +29,15 @@ High-level design for the v0.1 prototype, plus the v0.2 feature set (designed he
 │  │  · collection grid       │        │  · POST /api/film        │  │
 │  │  · drag multi-select     │        │  · POST /api/scene       │  │
 │  │  · Gemini action button  │        │  · GET  /api/film/:id    │  │
-│  │  · generation progress   │        └───────────┬──────────────┘  │
-│  │  · inline video player   │                    │                 │
-│  │  · scene prompt box      │                    │                 │
-│  └──────────────────────────┘                    │                 │
+│  │  · generation progress   │        │  · GET  /api/film/:id/…  │  │
+│  │  · inline video player   │        │           …video (local) │  │
+│  │  · scene prompt box      │        │  · POST /api/access      │  │
+│  │  · access nudge          │        │           (§5 sign-in)   │  │
+│  └──────────────────────────┘        └───────────┬──────────────┘  │
 │                                                  │                 │
-│  Static assets: seeded photo collections         │                 │
-│  Vercel Blob: generated films + generated scenes │                 │
+│  Static: seeded collections + showcase films     │                 │
+│  Vercel Blob: live-generated films + scenes      │                 │
+│  Upstash Redis: spend budgets + caps (§5)        │                 │
 └──────────────────────────────────────────────────┼─────────────────┘
                                                    │
                                      Gemini API (/v1beta)
@@ -63,7 +65,7 @@ Per-chunk prompts are assembled from a fixed, well-tuned prompt template per col
 ### 3.2 Generation (Gemini Interactions API)
 
 - Model: `gemini-omni-flash-preview`, task `image_to_video` / `reference_to_video`, via `client.interactions.create(...)` on the `/v1beta/interactions` endpoint. **Not** `generate_content` — video does not flow through it.
-- Reference images passed with the documented tagging grammar (`<FIRST_FRAME>@Image1`, `<IMAGE_REF_n>@ImageN`), up to 6 per generation.
+- Reference images passed with the tagging grammar `<IMAGE_REF_n>@ImageN` (zero-indexed, applied uniformly including the first image — the `<FIRST_FRAME>` variant in the docs was tried in the smoke test and the uniform form is what held identity), up to 6 per generation.
 - **`store: true`** on every generation. It costs nothing in v0.1 and keeps every generated clip conversationally editable via `previous_interaction_id` — the door v0.2's refinement feature walks through. (`store: false` would permanently orphan the clip from future edits.)
 - Synchronous unary mode (`background: false, stream: false`) inside the API route. Vercel's 300s function timeout comfortably covers observed generation latency (tens of seconds per clip); if real-world latency proves spikier, the fallback is `background: true` + client polling on `GET /api/film/:id` — the route split exists from day one so this is a config change, not a refactor.
 - Output constraints accepted as-is: 720p, 24fps, 3–10s per generation.
@@ -136,7 +138,7 @@ A design exploration (not necessarily code): what shipping inside actual Google 
 ### 7.6 Explicitly out of scope at every version of this prototype
 Uploading personal photos (a real product's core path, but a demo liability: privacy, moderation, and cost surface), and any claim of production-readiness.
 
-**Amended (July 2026): gated access is in v0.1.** This section previously ruled out accounts entirely. Making the repo public changed the calculus: anyone arriving from GitHub can spend the maintainer's money, and anonymous per-IP throttling caps the *rate* of that spend without ever capping *who*. What shipped is deliberately the smallest thing that answers "who is spending": an email allowlist in env vars plus a shared access code — no user database, no password, no email infrastructure, no profile, nothing stored about a person but a hashed address and a number of cents. It exists to bound cost, not to build an account system, and the demo stays entirely visible without it (§5.2).
+**Amended (July 2026): gated access is in v0.1.** This section previously ruled out accounts entirely. Making the repo public changed the calculus: anyone arriving from GitHub can spend the maintainer's money, and anonymous per-IP throttling caps the *rate* of that spend without ever capping *who*. What shipped is deliberately the smallest thing that answers "who is spending": an email allowlist in env vars plus a shared access code — no user database, no password, no email infrastructure, no profile, nothing stored about a person but a hashed address and a number of cents. It exists to bound cost, not to build an account system, and the demo stays entirely visible without it (§5).
 
 ---
 

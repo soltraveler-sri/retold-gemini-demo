@@ -19,9 +19,7 @@ import {
 } from "./access";
 
 const VISITOR_COOKIE = "retold_visitor";
-const UNLOCK_COOKIE = "retold_demo_unlock";
 const VISITOR_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
-const UNLOCK_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 8;
 const REDIS_TIMEOUT_MS = 3_000;
 
 /**
@@ -150,66 +148,6 @@ function parseCookies(request: Request): ReadonlyMap<string, string> {
     if (name && !cookies.has(name)) cookies.set(name, value);
   }
   return cookies;
-}
-
-function configuredUnlock(environment: Environment): string | null {
-  const unlock = environment.DEMO_UNLOCK;
-  return unlock && unlock.trim().length > 0 ? unlock : null;
-}
-
-export function issueDemoUnlockCookie(
-  attemptedPassphrase: string,
-  request: Request,
-  environment: Environment = process.env,
-  now: Date = new Date(),
-): string | null {
-  const unlock = configuredUnlock(environment);
-  if (!unlock || !constantTimeTextEqual(attemptedPassphrase, unlock)) {
-    return null;
-  }
-
-  const expiresAt =
-    Math.floor(now.getTime() / 1_000) + UNLOCK_COOKIE_MAX_AGE_SECONDS;
-  const payload = `v1.${expiresAt}`;
-  const value = `${payload}.${sign(unlock, "demo-unlock", payload)}`;
-  return serializeCookie(
-    UNLOCK_COOKIE,
-    value,
-    UNLOCK_COOKIE_MAX_AGE_SECONDS,
-    request,
-  );
-}
-
-function hasValidUnlockCookie(
-  request: Request,
-  environment: Environment,
-  now: Date,
-): boolean {
-  const unlock = configuredUnlock(environment);
-  const value = parseCookies(request).get(UNLOCK_COOKIE);
-  if (!unlock || !value) return false;
-
-  const [version, expiresText, signature, ...extra] = value.split(".");
-  if (
-    version !== "v1" ||
-    !expiresText ||
-    !signature ||
-    extra.length > 0 ||
-    !/^\d+$/.test(expiresText)
-  ) {
-    return false;
-  }
-
-  const expiresAt = Number(expiresText);
-  if (!Number.isSafeInteger(expiresAt) || expiresAt <= now.getTime() / 1_000) {
-    return false;
-  }
-
-  const payload = `${version}.${expiresText}`;
-  return constantTimeTextEqual(
-    signature,
-    sign(unlock, "demo-unlock", payload),
-  );
 }
 
 function validVisitorId(cookie: string | undefined, secret: string): string | null {
@@ -346,22 +284,6 @@ export function createUpstashCapacityRedis(
       return payload.result;
     },
   };
-}
-
-function queryUnlockCookie(
-  request: Request,
-  environment: Environment,
-  now: Date,
-): string | null {
-  const attemptedPassphrase = new URL(request.url).searchParams.get("key");
-  return attemptedPassphrase === null
-    ? null
-    : issueDemoUnlockCookie(
-        attemptedPassphrase,
-        request,
-        environment,
-        now,
-      );
 }
 
 export async function checkGenerationCapacity(
