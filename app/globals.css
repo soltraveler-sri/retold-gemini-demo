@@ -219,15 +219,170 @@ body {
   opacity: 0.48;
 }
 
+.gemini-action:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.filmstrip {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: clamp(0.3rem, 1.3vw, 0.75rem);
+  padding: clamp(0.4rem, 1vw, 0.75rem);
+  border-radius: 18px;
+  background: #25231f;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.film-anchor {
+  background: #3a3731;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07);
+  opacity: 0.56;
+  transform: scale(0.965);
+  transition:
+    opacity 420ms ease,
+    transform 420ms cubic-bezier(0.22, 0.8, 0.28, 1),
+    box-shadow 420ms ease;
+}
+
+.film-anchor::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid transparent;
+  border-radius: inherit;
+  pointer-events: none;
+  transition: border-color 420ms ease;
+}
+
+.film-anchor[data-active="true"] {
+  z-index: 1;
+  opacity: 1;
+  transform: scale(1.035);
+  box-shadow:
+    0 0 0 3px #25231f,
+    0 0 0 5px rgba(221, 176, 155, 0.9),
+    0 8px 28px rgba(0, 0, 0, 0.28);
+}
+
+.film-anchor[data-active="true"]::after {
+  border-color: rgba(255, 255, 255, 0.72);
+}
+
+.film-anchor-number {
+  position: absolute;
+  right: 0.42rem;
+  bottom: 0.36rem;
+  z-index: 2;
+  padding: 0.2rem 0.32rem;
+  border-radius: 999px;
+  background: rgba(37, 35, 31, 0.72);
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  backdrop-filter: blur(5px);
+}
+
+.generation-stage-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(37, 35, 31, 0.16);
+  transition:
+    width 360ms ease,
+    background-color 360ms ease;
+}
+
+.generation-stage-dot[data-passed="true"] {
+  background: rgba(140, 87, 70, 0.48);
+}
+
+.generation-stage-dot[data-active="true"] {
+  width: 28px;
+  background: #8c5746;
+}
+
+.primary-film-action,
+.secondary-film-action,
+.dark-film-action {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  padding: 0.7rem 1rem;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.primary-film-action {
+  border: 1px solid #25231f;
+  background: #25231f;
+  color: white;
+  box-shadow: 0 5px 16px rgba(37, 35, 31, 0.15);
+}
+
+.secondary-film-action {
+  border: 1px solid rgba(37, 35, 31, 0.12);
+  background: transparent;
+  color: #6e6961;
+}
+
+.dark-film-action {
+  gap: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.07);
+  color: white;
+}
+
+.primary-film-action:hover,
+.secondary-film-action:hover,
+.dark-film-action:hover {
+  transform: translateY(-1px);
+}
+
+.primary-film-action:hover {
+  background: #34312c;
+}
+
+.secondary-film-action:hover {
+  border-color: rgba(140, 87, 70, 0.4);
+  color: #25231f;
+}
+
+.dark-film-action:hover {
+  border-color: rgba(221, 176, 155, 0.45);
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.primary-film-action:focus-visible,
+.secondary-film-action:focus-visible,
+.dark-film-action:focus-visible {
+  outline: 2px solid #8c5746;
+  outline-offset: 2px;
+}
+
+/* Y and scale only. Horizontal centring belongs to the element's `translate`
+   property (Tailwind's -translate-x-1/2); adding translate(-50%) to `transform`
+   here would stack with it and shift the bar a full width off-screen. */
 @keyframes selection-bar-in {
   from {
     opacity: 0;
-    transform: translate(-50%, 18px) scale(0.97);
+    transform: translateY(18px) scale(0.97);
   }
 
   to {
     opacity: 1;
-    transform: translate(-50%, 0) scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -256,12 +411,42 @@ body {
   }
 }
 
+@media (max-width: 639px) {
+  .filmstrip {
+    gap: 0.24rem;
+    padding: 0.32rem;
+    border-radius: 15px;
+  }
+
+  .film-anchor {
+    border-radius: 9px;
+  }
+
+  .film-anchor[data-active="true"] {
+    transform: scale(1.025);
+    box-shadow:
+      0 0 0 2px #25231f,
+      0 0 0 3px rgba(221, 176, 155, 0.94);
+  }
+
+  .film-anchor-number {
+    right: 0.25rem;
+    bottom: 0.24rem;
+    font-size: 7px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .photo-tile,
   .photo-selection-wash,
   .photo-check,
   .photo-check svg,
-  .gemini-action {
+  .gemini-action,
+  .film-anchor,
+  .generation-stage-dot,
+  .primary-film-action,
+  .secondary-film-action,
+  .dark-film-action {
     transition-duration: 0.01ms !important;
   }
 
