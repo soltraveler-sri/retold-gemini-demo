@@ -4,8 +4,15 @@
 
 **A working prototype of a feature Google Photos doesn't have yet: select a handful of photos from your library, the same way you already multi-select to delete or share, tap one Gemini button, and get back a short generative film of that moment in your life.**
 
-> **Live demo:** _(Vercel deployment link coming with v0.1)_
-> **Status:** v0.1 in development · [architecture doc](prototype_architecture.md)
+> **Live demo:** **[retold-gemini-demo.vercel.app](https://retold-gemini-demo.vercel.app)**
+> **Status:** v0.1 shipped · [architecture doc](prototype_architecture.md)
+>
+> The demo is fully browsable by anyone — watch a showcase film, run the guided
+> walkthrough, and explore the library. *Generating* a new film or camera roll
+> runs on a paid model, so it's opened up per person; the whole experience short
+> of live generation is free and unrestricted.
+
+![The seeded library — three date-clustered collections that read like a real camera roll](docs/screenshots/library.jpg)
 
 ---
 
@@ -102,12 +109,23 @@ The constraints that shape the experience: output is 720p at 24fps, 3 to 10 seco
 
 A portfolio prototype, and mostly an exercise in how I think about products and how I design UX. The thesis, the feature concept, and the scoping decisions are mine. The implementation is done with AI coding agents working from that direction.
 
+## What it looks like
+
+| Select and generate | Watch an example |
+|---|---|
+| ![Photos-style multi-select on mobile, with the Gemini action bar](docs/screenshots/mobile-select.jpg) | ![A stitched two-shot showcase film playing inline](docs/screenshots/showcase-film.jpg) |
+
 ## Run locally
 
 ```bash
 npm install
-cp .env.example .env.local
+cp .env.example .env.local   # then fill in the values you need
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The library shell does not require API credentials; add local values only when working on later generation features.
+Open [http://localhost:3000](http://localhost:3000). It runs out of the box with
+no credentials: `MOCK_OMNI=1` (the default) serves a canned film in place of a
+real generation, so the whole flow works for free. To exercise real generation
+locally, set `MOCK_OMNI=0` and add a billing-enabled `GEMINI_API_KEY`; the cost
+controls and per-person budgets additionally need Upstash Redis and the access
+vars. Every variable is documented in [`.env.example`](.env.example).
