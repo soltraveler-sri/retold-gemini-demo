@@ -5,33 +5,54 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 
+import {
+  accessConfigStatus,
+  authSecretOrNull,
+  budgetKey,
+  budgetLimitCents,
+  budgetTtlSeconds,
+  issueSessionCookie,
+  readIdentity,
+  type AccessDenial,
+  type Identity,
+} from "./access";
+
 const VISITOR_COOKIE = "retold_visitor";
 const UNLOCK_COOKIE = "retold_demo_unlock";
 const VISITOR_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 const UNLOCK_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 8;
 const REDIS_TIMEOUT_MS = 3_000;
 
+/**
+ * Global circuit breaker and the signed-in identity's budget are checked and
+ * incremented in one script. Splitting them across two round-trips would let a
+ * budget be charged for a generation the global cap then refuses, and would let
+ * concurrent requests race past either limit.
+ *
+ * KEYS: 1 global day counter, 2 identity budget (cents)
+ * ARGV: 1 global cap, 2 global TTL, 3 cost, 4 budget limit, 5 budget TTL (0 = never)
+ */
 const RESERVE_CAPACITY_SCRIPT = `
 local global_count = tonumber(redis.call("GET", KEYS[1]) or "0")
-local ip_count = tonumber(redis.call("GET", KEYS[2]) or "0")
-local visitor_count = tonumber(redis.call("GET", KEYS[3]) or "0")
-local global_cap = tonumber(ARGV[1])
-local visitor_cap = tonumber(ARGV[2])
-local ttl_seconds = tonumber(ARGV[3])
-
-if global_count >= global_cap then
+if global_count >= tonumber(ARGV[1]) then
   return "global-cap-reached"
 end
 
-if ip_count >= visitor_cap or visitor_count >= visitor_cap then
-  return "visitor-cap-reached"
+local spent = tonumber(redis.call("GET", KEYS[2]) or "0")
+local cost = tonumber(ARGV[3])
+if spent + cost > tonumber(ARGV[4]) then
+  return "budget-exhausted"
 end
 
-for _, key in ipairs(KEYS) do
-  local count = redis.call("INCR", key)
-  if count == 1 then
-    redis.call("EXPIRE", key, ttl_seconds)
-  end
+local next_global = redis.call("INCR", KEYS[1])
+if next_global == 1 then
+  redis.call("EXPIRE", KEYS[1], tonumber(ARGV[2]))
+end
+
+redis.call("INCRBY", KEYS[2], cost)
+local budget_ttl = tonumber(ARGV[5])
+if budget_ttl > 0 and redis.call("TTL", KEYS[2]) < 0 then
+  redis.call("EXPIRE", KEYS[2], budget_ttl)
 end
 
 return "allowed"
@@ -42,15 +63,16 @@ type Environment = Readonly<Record<string, string | undefined>>;
 export type CapacityReservationResult =
   | "allowed"
   | "global-cap-reached"
-  | "visitor-cap-reached";
+  | "budget-exhausted";
 
 export interface CapacityReservation {
   globalKey: string;
-  ipKey: string;
-  visitorKey: string;
+  budgetKey: string;
   globalCap: number;
-  visitorCap: number;
-  ttlSeconds: number;
+  globalTtlSeconds: number;
+  costCents: number;
+  budgetLimitCents: number;
+  budgetTtlSeconds: number;
 }
 
 export interface CapacityRedis {
@@ -59,7 +81,12 @@ export interface CapacityRedis {
 
 export type GenerationCapacityDecision =
   | { allowed: true; setCookies: readonly string[] }
-  | { allowed: false; message: string; setCookies: readonly string[] };
+  | {
+      allowed: false;
+      denial: AccessDenial | "global-cap-reached";
+      message: string;
+      setCookies: readonly string[];
+    };
 
 export interface GenerationCapacityOptions {
   request: Request;
@@ -70,6 +97,8 @@ export interface GenerationCapacityOptions {
   defaultDailyCap: number;
   defaultVisitorCap: number;
   realGeneration: boolean;
+  /** Measured cost of this generation, charged to the signed-in identity. */
+  costCents: number;
   environment?: Environment;
   redis?: CapacityRedis;
   now?: Date;
@@ -267,7 +296,7 @@ function isCapacityReservationResult(
   return (
     value === "allowed" ||
     value === "global-cap-reached" ||
-    value === "visitor-cap-reached"
+    value === "budget-exhausted"
   );
 }
 
@@ -287,13 +316,14 @@ export function createUpstashCapacityRedis(
         body: JSON.stringify([
           "EVAL",
           RESERVE_CAPACITY_SCRIPT,
-          3,
+          2,
           input.globalKey,
-          input.ipKey,
-          input.visitorKey,
+          input.budgetKey,
           input.globalCap,
-          input.visitorCap,
-          input.ttlSeconds,
+          input.globalTtlSeconds,
+          input.costCents,
+          input.budgetLimitCents,
+          input.budgetTtlSeconds,
         ]),
         cache: "no-store",
         signal: AbortSignal.timeout(REDIS_TIMEOUT_MS),
@@ -338,51 +368,64 @@ export async function checkGenerationCapacity(
 ): Promise<GenerationCapacityDecision> {
   const environment = options.environment ?? process.env;
   const now = options.now ?? new Date();
-  const unlockCookie = queryUnlockCookie(options.request, environment, now);
 
-  if (unlockCookie) return { allowed: true, setCookies: [unlockCookie] };
-  if (hasValidUnlockCookie(options.request, environment, now)) {
-    return { allowed: true, setCookies: [] };
-  }
+  // Mock generation touches no paid service, so it needs no identity and no
+  // Redis. Anonymous visitors must keep the full demo, including showcase.
   if (!options.realGeneration) return { allowed: true, setCookies: [] };
 
+  // DEMO_UNLOCK no longer bypasses budgets: it mints an admin-tier session that
+  // is metered like any other. A live presentation still works; an unbounded
+  // spend path does not exist.
+  const setCookies: string[] = [];
+  const unlocked = unlockAdminSession(options.request, environment, now);
+  if (unlocked?.cookie) setCookies.push(unlocked.cookie);
+
+  const identity =
+    unlocked?.identity ?? readIdentity(options.request, environment, now);
+  if (!identity) {
+    return {
+      allowed: false,
+      denial: "auth-required",
+      message: `Live ${options.resourceLabel} generation runs on a paid model and is available by invitation. Showcase films and the walkthrough are free.`,
+      setCookies,
+    };
+  }
+
+  const config = accessConfigStatus(environment);
+  const secret = authSecretOrNull(environment);
   const dailyCap = parseCap(
     environment[options.dailyCapEnvironmentVariable],
     options.defaultDailyCap,
   );
-  const visitorCap = parseCap(
-    environment[options.visitorCapEnvironmentVariable],
-    options.defaultVisitorCap,
-  );
   const url = environment.UPSTASH_REDIS_REST_URL?.trim();
   const token = environment.UPSTASH_REDIS_REST_TOKEN?.trim();
 
-  if (dailyCap === null || visitorCap === null || !url || !token) {
+  // Fail closed: a misconfigured demo must never mean unmetered spend.
+  if (!config.configured || !secret || dailyCap === null || !url || !token) {
+    console.error(
+      `[capacity] Refusing real ${options.resourceLabel} generation: ${config.reason ?? "cap or Redis configuration is missing"}.`,
+    );
     return {
       allowed: false,
+      denial: "misconfigured",
       message: `Live ${options.resourceLabel} generation is temporarily unavailable. Showcase content is still available.`,
-      setCookies: [],
+      setCookies,
     };
   }
 
-  const identity = visitorIdentity(
-    options.request,
-    token,
-    options.randomVisitorId ?? (() => randomBytes(18).toString("base64url")),
-  );
   const date = now.toISOString().slice(0, 10);
-  const namespace = `retold:capacity:${options.resource}:${date}`;
   const redis = options.redis ?? createUpstashCapacityRedis(url, token);
 
   let result: CapacityReservationResult;
   try {
     result = await redis.reserve({
-      globalKey: `${namespace}:global`,
-      ipKey: `${namespace}:ip:${privateDigest(token, "ip", requestIp(options.request))}`,
-      visitorKey: `${namespace}:visitor:${privateDigest(token, "visitor-id", identity.id)}`,
+      globalKey: `retold:capacity:${options.resource}:${date}:global`,
+      budgetKey: budgetKey(identity, secret, now),
       globalCap: dailyCap,
-      visitorCap,
-      ttlSeconds: secondsUntilCounterExpiry(now),
+      globalTtlSeconds: secondsUntilCounterExpiry(now),
+      costCents: options.costCents,
+      budgetLimitCents: budgetLimitCents(identity.tier, environment),
+      budgetTtlSeconds: budgetTtlSeconds(identity.tier),
     });
   } catch {
     console.error(
@@ -390,25 +433,60 @@ export async function checkGenerationCapacity(
     );
     return {
       allowed: false,
+      denial: "misconfigured",
       message: `Live ${options.resourceLabel} generation is temporarily unavailable. Showcase content is still available.`,
-      setCookies: identity.setCookie ? [identity.setCookie] : [],
+      setCookies,
     };
   }
 
-  const setCookies = identity.setCookie ? [identity.setCookie] : [];
   if (result === "global-cap-reached") {
     return {
       allowed: false,
+      denial: "global-cap-reached",
       message: `Today's live ${options.resourceLabel} limit has been reached. Showcase content is still available.`,
       setCookies,
     };
   }
-  if (result === "visitor-cap-reached") {
+  if (result === "budget-exhausted") {
     return {
       allowed: false,
-      message: `You've reached today's live ${options.resourceLabel} limit. Showcase content is still available.`,
+      denial: "budget-exhausted",
+      message:
+        identity.tier === "guest"
+          ? "You've used your full demo credit. Showcase films and the walkthrough are still available."
+          : "This month's generation budget is used up. Showcase content is still available.",
       setCookies,
     };
   }
   return { allowed: true, setCookies };
+}
+
+/**
+ * DEMO_UNLOCK (`?key=`) signs the visitor in as the first configured admin,
+ * so presentation access is metered against the admin budget like any other.
+ */
+function unlockAdminSession(
+  request: Request,
+  environment: Environment,
+  now: Date,
+): { identity: Identity; cookie: string } | null {
+  const configured = environment.DEMO_UNLOCK?.trim();
+  if (!configured) return null;
+
+  const supplied = new URL(request.url).searchParams.get("key");
+  if (!supplied) return null;
+
+  const adminEmail = (environment.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .find((entry) => entry.length > 0);
+  if (!adminEmail) return null;
+
+  const suppliedDigest = createHash("sha256").update(supplied).digest();
+  const configuredDigest = createHash("sha256").update(configured).digest();
+  if (!timingSafeEqual(suppliedDigest, configuredDigest)) return null;
+
+  const cookie = issueSessionCookie(adminEmail, environment, now);
+  if (!cookie) return null;
+  return { identity: { email: adminEmail, tier: "admin" }, cookie };
 }

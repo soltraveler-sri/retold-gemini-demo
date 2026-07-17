@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { issueSessionCookie } from "./access";
+
 import {
   buildFilmPrompt,
   capReachedError,
@@ -26,23 +28,22 @@ const VISITOR_ID = "visitor-test-identifier-0001";
 class MemoryCapacityRedis implements CapacityRedis {
   readonly reservations: CapacityReservation[] = [];
   private readonly counts = new Map<string, number>();
+  private readonly spend = new Map<string, number>();
 
   async reserve(
     input: CapacityReservation,
   ): Promise<CapacityReservationResult> {
     this.reservations.push(input);
     const globalCount = this.counts.get(input.globalKey) ?? 0;
-    const ipCount = this.counts.get(input.ipKey) ?? 0;
-    const visitorCount = this.counts.get(input.visitorKey) ?? 0;
-
     if (globalCount >= input.globalCap) return "global-cap-reached";
-    if (ipCount >= input.visitorCap || visitorCount >= input.visitorCap) {
-      return "visitor-cap-reached";
+
+    const spent = this.spend.get(input.budgetKey) ?? 0;
+    if (spent + input.costCents > input.budgetLimitCents) {
+      return "budget-exhausted";
     }
 
-    for (const key of [input.globalKey, input.ipKey, input.visitorKey]) {
-      this.counts.set(key, (this.counts.get(key) ?? 0) + 1);
-    }
+    this.counts.set(input.globalKey, globalCount + 1);
+    this.spend.set(input.budgetKey, spent + input.costCents);
     return "allowed";
   }
 }
@@ -66,6 +67,13 @@ function capacityEnvironment(
     UPSTASH_REDIS_REST_TOKEN: "unit-test-redis-secret",
     DAILY_FILM_CAP: "15",
     VISITOR_FILM_CAP: "2",
+    AUTH_SECRET: "a-sufficiently-long-test-secret-value",
+    ADMIN_EMAILS: "maintainer@example.com",
+    GUEST_EMAILS: "guest@example.com",
+    ADMIN_ACCESS_CODE: "admin-code",
+    GUEST_ACCESS_CODE: "guest-code",
+    ADMIN_MONTHLY_BUDGET_USD: "100",
+    GUEST_LIFETIME_BUDGET_USD: "15",
     ...overrides,
   };
 }
@@ -82,6 +90,18 @@ function capacityRequest(
 
 function cookiePair(setCookie: string): string {
   return setCookie.split(";", 1)[0]!;
+}
+
+/** Real generation now requires an identity; these tests exercise caps, not auth. */
+function signedInRequest(
+  ip: string,
+  tier: "admin" | "guest" = "admin",
+  environment: Readonly<Record<string, string | undefined>> = capacityEnvironment(),
+  query = "",
+): Request {
+  const email = tier === "admin" ? "maintainer@example.com" : "guest@example.com";
+  const cookie = cookiePair(issueSessionCookie(email, environment, CAP_TEST_NOW)!);
+  return capacityRequest(ip, cookie, query);
 }
 
 function fixedCapacityDependencies(
@@ -219,101 +239,122 @@ test("mock progress uses staged delays totaling 20–40 seconds", async () => {
   );
 });
 
+test("anonymous visitors are refused before any paid call", async () => {
+  const redis = new MemoryCapacityRedis();
+  const decision = await checkFilmGenerationCapacity(
+    capacityRequest("203.0.113.10"),
+    fixedCapacityDependencies(redis, capacityEnvironment()),
+  );
+
+  assert.equal(decision.allowed, false);
+  if (decision.allowed) throw new Error("Expected anonymous access to be refused.");
+  assert.equal(decision.denial, "auth-required");
+  assert.equal(redis.reservations.length, 0, "must not touch Redis without an identity");
+});
+
 test("a global film cap of 1 atomically blocks the second attempt", async () => {
   const redis = new MemoryCapacityRedis();
-  const environment = capacityEnvironment({
-    DAILY_FILM_CAP: "1",
-    VISITOR_FILM_CAP: "5",
-  });
+  const environment = capacityEnvironment({ DAILY_FILM_CAP: "1" });
   const dependencies = fixedCapacityDependencies(redis, environment);
 
   const first = await checkFilmGenerationCapacity(
-    capacityRequest("203.0.113.10"),
+    signedInRequest("203.0.113.10", "admin", environment),
     dependencies,
   );
   const second = await checkFilmGenerationCapacity(
-    capacityRequest("203.0.113.11"),
+    signedInRequest("203.0.113.11", "admin", environment),
     dependencies,
   );
 
   assert.equal(first.allowed, true);
   assert.equal(second.allowed, false);
   if (second.allowed) throw new Error("Expected the global cap to be reached.");
+  assert.equal(second.denial, "global-cap-reached");
   assert.match(second.message, /today's live film limit/i);
-  assert.equal(redis.reservations.length, 2);
 });
 
-test("the per-visitor daily cap blocks either the signed visitor or its IP", async () => {
+test("a guest's credit is spent in dollars and blocks when exhausted", async () => {
   const redis = new MemoryCapacityRedis();
-  const environment = capacityEnvironment({
-    DAILY_FILM_CAP: "10",
-    VISITOR_FILM_CAP: "1",
-  });
+  // $2.50 of credit buys two $1.00 films and no more.
+  const environment = capacityEnvironment({ GUEST_LIFETIME_BUDGET_USD: "2.50" });
   const dependencies = fixedCapacityDependencies(redis, environment);
-  const first = await checkFilmGenerationCapacity(
-    capacityRequest("198.51.100.42"),
-    dependencies,
-  );
-  assert.equal(first.allowed, true);
-  assert.equal(first.setCookies.length, 1);
+  const request = () => signedInRequest("203.0.113.20", "guest", environment);
 
-  const second = await checkFilmGenerationCapacity(
-    capacityRequest(
-      "198.51.100.42",
-      cookiePair(first.setCookies[0]!),
-    ),
-    dependencies,
-  );
+  assert.equal((await checkFilmGenerationCapacity(request(), dependencies)).allowed, true);
+  assert.equal((await checkFilmGenerationCapacity(request(), dependencies)).allowed, true);
 
-  assert.equal(second.allowed, false);
-  if (second.allowed) throw new Error("Expected the visitor cap to be reached.");
-  assert.match(second.message, /you've reached/i);
+  const third = await checkFilmGenerationCapacity(request(), dependencies);
+  assert.equal(third.allowed, false);
+  if (third.allowed) throw new Error("Expected the guest credit to be exhausted.");
+  assert.equal(third.denial, "budget-exhausted");
+  assert.match(third.message, /used your full demo credit/i);
 });
 
-test("the demo unlock bypasses both caps and only a signed cookie persists it", async () => {
+test("a guest cannot spend against the admin budget", async () => {
+  const redis = new MemoryCapacityRedis();
+  const environment = capacityEnvironment({ GUEST_LIFETIME_BUDGET_USD: "1" });
+  const dependencies = fixedCapacityDependencies(redis, environment);
+
+  await checkFilmGenerationCapacity(
+    signedInRequest("203.0.113.21", "guest", environment),
+    dependencies,
+  );
+  const guestReservation = redis.reservations.at(-1)!;
+  assert.match(guestReservation.budgetKey, /^retold:budget:guest:/);
+  assert.equal(guestReservation.budgetLimitCents, 100);
+
+  await checkFilmGenerationCapacity(
+    signedInRequest("203.0.113.22", "admin", environment),
+    dependencies,
+  );
+  const adminReservation = redis.reservations.at(-1)!;
+  assert.match(adminReservation.budgetKey, /^retold:budget:admin:/);
+  assert.equal(adminReservation.budgetLimitCents, 10000);
+  assert.notEqual(guestReservation.budgetKey, adminReservation.budgetKey);
+});
+
+test("the demo unlock grants a metered admin session, not an unlimited bypass", async () => {
   const redis = new MemoryCapacityRedis();
   const environment = capacityEnvironment({
-    DAILY_FILM_CAP: "0",
-    VISITOR_FILM_CAP: "0",
     DEMO_UNLOCK: "presentation-passphrase",
+    ADMIN_MONTHLY_BUDGET_USD: "1",
   });
   const dependencies = fixedCapacityDependencies(redis, environment);
+
   const unlocked = await checkFilmGenerationCapacity(
-    capacityRequest(
-      "192.0.2.12",
-      undefined,
-      "?key=presentation-passphrase",
-    ),
+    capacityRequest("192.0.2.12", undefined, "?key=presentation-passphrase"),
     dependencies,
   );
-
   assert.equal(unlocked.allowed, true);
-  assert.equal(unlocked.setCookies.length, 1);
-  assert.equal(redis.reservations.length, 0);
+  assert.equal(unlocked.setCookies.length, 1, "unlock issues a session cookie");
+  assert.equal(
+    redis.reservations.length,
+    1,
+    "unlock must still be metered — it is not a bypass",
+  );
+  assert.match(redis.reservations[0]!.budgetKey, /^retold:budget:admin:/);
 
-  const unlockCookie = cookiePair(unlocked.setCookies[0]!);
-  const persisted = await checkFilmGenerationCapacity(
-    capacityRequest("192.0.2.12", unlockCookie),
+  // $1.00 of admin budget buys exactly one $1.00 film, even when unlocked.
+  const second = await checkFilmGenerationCapacity(
+    capacityRequest("192.0.2.12", cookiePair(unlocked.setCookies[0]!)),
     dependencies,
   );
-  assert.equal(persisted.allowed, true);
-  assert.equal(redis.reservations.length, 0);
+  assert.equal(second.allowed, false);
+  if (second.allowed) throw new Error("Expected the admin budget to be exhausted.");
+  assert.equal(second.denial, "budget-exhausted");
 
-  const lastCharacter = unlockCookie.at(-1);
-  const tamperedCookie = `${unlockCookie.slice(0, -1)}${lastCharacter === "A" ? "B" : "A"}`;
-  const tampered = await checkFilmGenerationCapacity(
-    capacityRequest("192.0.2.12", tamperedCookie),
+  const wrongKey = await checkFilmGenerationCapacity(
+    capacityRequest("192.0.2.12", undefined, "?key=wrong-passphrase"),
     dependencies,
   );
-  assert.equal(tampered.allowed, false);
-  assert.equal(redis.reservations.length, 1);
+  assert.equal(wrongKey.allowed, false);
 });
 
 test("Redis-down refuses real generation but mock generation never touches Redis", async () => {
   const redis = new UnreachableCapacityRedis();
   const realEnvironment = capacityEnvironment();
   const real = await checkFilmGenerationCapacity(
-    capacityRequest("203.0.113.99"),
+    signedInRequest("203.0.113.99", "admin", realEnvironment),
     fixedCapacityDependencies(redis, realEnvironment),
   );
 
@@ -327,7 +368,7 @@ test("Redis-down refuses real generation but mock generation never touches Redis
     UPSTASH_REDIS_REST_TOKEN: undefined,
   });
   const misconfigured = await checkFilmGenerationCapacity(
-    capacityRequest("203.0.113.99"),
+    signedInRequest("203.0.113.99", "admin", missingRedisEnvironment),
     fixedCapacityDependencies(redis, missingRedisEnvironment),
   );
   assert.equal(misconfigured.allowed, false);
@@ -346,11 +387,10 @@ test("Redis-down refuses real generation but mock generation never touches Redis
   assert.equal(redis.calls, 1);
 });
 
-test("Redis keys contain the UTC date and hashes, never the raw visitor IP", async () => {
+test("Redis keys carry the UTC date and a hashed identity, never a raw email", async () => {
   const redis = new MemoryCapacityRedis();
-  const rawIp = "203.0.113.77";
   const result = await checkFilmGenerationCapacity(
-    capacityRequest(rawIp),
+    signedInRequest("203.0.113.77"),
     fixedCapacityDependencies(redis, capacityEnvironment()),
   );
 
@@ -358,12 +398,16 @@ test("Redis keys contain the UTC date and hashes, never the raw visitor IP", asy
   const reservation = redis.reservations[0];
   assert.ok(reservation);
   assert.match(reservation.globalKey, /:2026-07-17:global$/);
-  assert.equal(reservation.ipKey.includes(rawIp), false);
-  assert.match(reservation.ipKey, /:ip:[a-f0-9]{64}$/);
-  assert.match(reservation.visitorKey, /:visitor:[a-f0-9]{64}$/);
+  assert.equal(
+    reservation.budgetKey.includes("maintainer@example.com"),
+    false,
+    "the budget key must never contain a raw email",
+  );
+  assert.match(reservation.budgetKey, /^retold:budget:(admin|guest):/);
+  assert.equal(reservation.costCents, 100);
 });
 
-test("the Upstash adapter reserves all counters in one EVAL command", async () => {
+test("the Upstash adapter reserves the cap and the budget in one EVAL command", async () => {
   let requestBody: unknown;
   let calls = 0;
   const mockFetch: typeof fetch = async (_input, init) => {
@@ -381,22 +425,18 @@ test("the Upstash adapter reserves all counters in one EVAL command", async () =
   );
   const result = await redis.reserve({
     globalKey: "global-key",
-    ipKey: "ip-key",
-    visitorKey: "visitor-key",
+    budgetKey: "budget-key",
     globalCap: 15,
-    visitorCap: 2,
-    ttlSeconds: 43_200,
+    globalTtlSeconds: 43_200,
+    costCents: 100,
+    budgetLimitCents: 1500,
+    budgetTtlSeconds: 0,
   });
 
   assert.equal(result, "allowed");
   assert.equal(calls, 1);
   assert.ok(Array.isArray(requestBody));
   assert.equal(requestBody[0], "EVAL");
-  assert.match(String(requestBody[1]), /redis\.call\("INCR", key\)/);
-  assert.deepEqual(requestBody.slice(2, 6), [
-    3,
-    "global-key",
-    "ip-key",
-    "visitor-key",
-  ]);
+  assert.match(String(requestBody[1]), /redis\.call\("INCRBY", KEYS\[2\], cost\)/);
+  assert.deepEqual(requestBody.slice(2, 5), [2, "global-key", "budget-key"]);
 });

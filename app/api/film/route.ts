@@ -1,5 +1,5 @@
 import {
-  capReachedError,
+  filmErrorFromDenial,
   checkFilmGenerationCapacity,
   createFilm,
   FilmError,
@@ -82,7 +82,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const capacity = await checkFilmGenerationCapacity(request);
     setCookies = capacity.setCookies;
-    if (!capacity.allowed) throw capReachedError(capacity.message);
+    if (!capacity.allowed) throw filmErrorFromDenial(capacity);
 
     const film = await createFilm(photoIds);
     const url = new URL(film.url, request.url).toString();

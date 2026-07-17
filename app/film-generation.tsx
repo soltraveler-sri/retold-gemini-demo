@@ -18,7 +18,14 @@ function passthroughImageLoader({ src }: { src: string }): string {
   return src;
 }
 
-type GenerationErrorKind = "failed" | "capacity" | "network";
+type GenerationErrorKind =
+  | "failed"
+  | "capacity"
+  /** No invitation: the visitor must be nudged, not shown an error. */
+  | "access"
+  /** Signed in, but their own demo credit is spent. */
+  | "credit"
+  | "network";
 
 interface FilmApiResponse {
   filmId: string;
@@ -153,6 +160,9 @@ function generationErrorFromResponse(
   payload: FilmApiError,
 ): GenerationErrorKind {
   const code = payload.error?.code;
+  if (status === 401 || code === "auth-required") return "access";
+  if (code === "credit-exhausted") return "credit";
+  // 402 budget-exceeded is Gemini's OWN budget, not the visitor's credit.
   if (status === 429 || status === 402 || code === "cap-reached" || code === "budget-exceeded") {
     return "capacity";
   }
@@ -313,7 +323,14 @@ export function useFilmGeneration(
           activeAnchorIndex: 0,
           error: {
             kind,
-            retryAvailable: kind !== "capacity" && !isRetry && !retryUsedRef.current,
+            // Retry only helps for transient failures. A cap, a missing invitation,
+            // or a spent credit will fail identically every time.
+            retryAvailable:
+              kind !== "capacity" &&
+              kind !== "access" &&
+              kind !== "credit" &&
+              !isRetry &&
+              !retryUsedRef.current,
           },
         });
       }
@@ -402,6 +419,21 @@ const ERROR_COPY: Record<
     title: "Connection lost.",
     note: "We couldn’t reach the film service. Check your connection, then try again.",
     action: "Try again",
+  },
+  // These two are handled by the access nudge, which offers the walkthrough and
+  // a way to ask for access. The copy here is only a fallback if the overlay is
+  // ever reached directly.
+  access: {
+    eyebrow: "Generation is by invitation",
+    title: "This part runs on a paid model.",
+    note: "The library, the walkthrough, and the example films are free. Live generation is opened up per person.",
+    action: "Back to photos",
+  },
+  credit: {
+    eyebrow: "Demo credit used",
+    title: "That’s your credit spent.",
+    note: "Showcase films and the walkthrough are still yours to watch, any time.",
+    action: "Back to photos",
   },
 };
 

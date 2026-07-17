@@ -83,7 +83,7 @@ Before any UI exists, issue #1 is a script that sends two photos of people throu
 
 The demo's secondary flourish: prompt → coherent photo cluster.
 
-- One request to a Gemini image generation model (Nano Banana family), asking for **5–6 images as a single narratively sequential set** — same event, same people, same light arc (e.g. ceremony → golden hour → first dance), composed so they read as one camera roll cluster. Sequential coherence comes from generating the set in one call with an explicit shot-list prompt, not from independent generations.
+- **5–6 images as a single narratively sequential set** from a Gemini image model (Nano Banana family) — same event, same people, same light arc (e.g. ceremony → golden hour → first dance), composed so they read as one camera roll cluster. *Amended from "one request" after measurement:* sequential coherence comes from generating the set as **one chained interaction** (each image passing `previous_interaction_id`), which is what actually holds identity across a set. Independent generations do not.
 - Results land in Blob and appear in the library UI as a new collection, visually identical to the seeded ones (timestamped, clustered). From there the film flow is exactly the same code path — the scene generator adds zero branches to the video pipeline.
 - This feature is intentionally lower priority than the core flow: it ships after the select-and-generate loop is solid.
 
@@ -93,13 +93,15 @@ The demo's secondary flourish: prompt → coherent photo cluster.
 
 Every film costs real money (~$0.10/sec of output video ≈ **$0.80–$2.00 per film**; scene generation is comparatively negligible). Controls, all in v0.1:
 
-1. **Showcase mode is the default.** Each seeded collection ships with a pre-generated film. Visitors watch those for free (Blob-served, zero API cost). Live generation is an explicit second step, not the landing experience.
-2. **Hard global spend cap.** A daily generation counter (Upstash Redis via Vercel Marketplace, or the simplest equivalent) with a hard ceiling; when reached, the demo degrades gracefully to showcase mode with a friendly note.
-3. **Per-visitor throttle.** Small per-IP/session generation budget (e.g. 2 films/day).
-4. **Optional demo key.** An environment-flagged passphrase that unlocks uncapped generation for portfolio presentations, so caps never interfere with a live pitch.
-5. **Server-resolved inputs only.** The API accepts photo IDs, never raw images — no vector for using the demo as a free video-generation proxy.
+1. **Showcase mode is the default.** Each seeded collection ships with a pre-generated film. Visitors watch those for free (served as static assets, zero API cost). Live generation is an explicit second step, not the landing experience.
+2. **Generation is identity-bound.** Anonymous visitors get the entire demo — the library, the guided walkthrough, every showcase film — and can spend nothing. Live generation requires a signed-in identity from an env-var allowlist: *guest* (a one-time credit) or *admin* (a monthly budget). This supersedes the original "no accounts" position; see §7.6.
+3. **Budgets are counted in dollars, not requests.** A film costs $1.00 and a scene ~$0.90 (measured, not estimated), so spend is reserved in cents against the identity's budget before the paid call, atomically with the global cap. Counting requests was always a proxy for the real constraint.
+4. **Hard global spend cap.** A daily generation counter (Upstash Redis via Vercel Marketplace) with a hard ceiling, retained as a circuit breaker behind the per-identity budgets.
+5. **Optional demo key.** An environment-flagged passphrase that grants an *admin-tier session* for portfolio presentations. It is metered like any other session — there is deliberately no unmetered path.
+6. **Server-resolved inputs only.** The API accepts photo IDs, never raw images — no vector for using the demo as a free video-generation proxy. Generated scene photos are signed descriptors, and the reference-image fetch is pinned to the Blob host.
+7. **Fails closed.** A missing signing secret, missing caps, or unreachable Redis refuses real generation. Mock, showcase, and the walkthrough are unaffected. A misconfigured demo must never mean unmetered spend.
 
-Env: `GEMINI_API_KEY` (AI Studio key on a billing-enabled project), `BLOB_READ_WRITE_TOKEN`, cap-tuning vars. Development iterates against cached/mock responses by default; real generations are deliberate.
+Env: `GEMINI_API_KEY` (AI Studio key on a billing-enabled project), `BLOB_READ_WRITE_TOKEN`, `UPSTASH_REDIS_REST_URL` / `_TOKEN`, `AUTH_SECRET`, `ADMIN_EMAILS` / `GUEST_EMAILS`, `ADMIN_ACCESS_CODE` / `GUEST_ACCESS_CODE`, budget and cap vars. Development iterates against cached/mock responses by default; real generations are deliberate.
 
 ---
 
@@ -132,7 +134,9 @@ A music bed with cut points aligned to detected beats (librosa-class onset detec
 A design exploration (not necessarily code): what shipping inside actual Google Photos entails — entry point in the real select action bar, generation quotas by AI subscription tier (free taste with caps, Photo to Video-style, vs. hard-gated, Video Remix-style), SynthID + visible watermarking, EEA person/minor policy constraints, and on-surface labeling. Deliverable is a short design doc + screens, extending this repo's thesis to the real surface.
 
 ### 7.6 Explicitly out of scope at every version of this prototype
-Uploading personal photos (a real product's core path, but a demo liability: privacy, moderation, and cost surface), accounts, and any claim of production-readiness.
+Uploading personal photos (a real product's core path, but a demo liability: privacy, moderation, and cost surface), and any claim of production-readiness.
+
+**Amended (July 2026): gated access is in v0.1.** This section previously ruled out accounts entirely. Making the repo public changed the calculus: anyone arriving from GitHub can spend the maintainer's money, and anonymous per-IP throttling caps the *rate* of that spend without ever capping *who*. What shipped is deliberately the smallest thing that answers "who is spending": an email allowlist in env vars plus a shared access code — no user database, no password, no email infrastructure, no profile, nothing stored about a person but a hashed address and a number of cents. It exists to bound cost, not to build an account system, and the demo stays entirely visible without it (§5.2).
 
 ---
 

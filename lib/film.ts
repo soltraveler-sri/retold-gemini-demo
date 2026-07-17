@@ -6,6 +6,7 @@ import { loadCollections } from "./collections";
 import { resolveSceneCollection } from "./scene";
 import { simulateFilmProgress } from "./film-stages";
 import { storeFilmVideo } from "./film-storage";
+import { FILM_COST_CENTS } from "./access";
 import {
   checkGenerationCapacity,
   type CapacityRedis,
@@ -31,7 +32,12 @@ const MOCK_FILM_PATH = resolve(PUBLIC_DIRECTORY, "mock", "sample-film.mp4");
 export type FilmErrorCode =
   | "invalid-input"
   | "cap-reached"
+  /** No signed-in identity: the visitor needs an invitation to spend. */
+  | "auth-required"
+  /** The signed-in identity has spent its own demo credit. */
+  | "credit-exhausted"
   | "upstream-model-error"
+  /** Gemini's OWN budget signal — distinct from our credit accounting. */
   | "budget-exceeded";
 
 export class FilmError extends Error {
@@ -197,6 +203,7 @@ export async function checkFilmGenerationCapacity(
     defaultDailyCap: 15,
     defaultVisitorCap: 2,
     realGeneration: isRealOmniEnabled(environment),
+    costCents: FILM_COST_CENTS,
     environment,
     ...(dependencies.redis ? { redis: dependencies.redis } : {}),
     ...(dependencies.now ? { now: dependencies.now } : {}),
@@ -208,6 +215,24 @@ export async function checkFilmGenerationCapacity(
 
 export function capReachedError(message: string): FilmError {
   return new FilmError("cap-reached", 429, message);
+}
+
+/**
+ * Denials must stay distinguishable end to end: the UI shows an invitation
+ * nudge for auth-required and a spent-credit message for credit-exhausted.
+ * Collapsing them into one code would make both look like a generic failure.
+ */
+export function filmErrorFromDenial(decision: {
+  denial: string;
+  message: string;
+}): FilmError {
+  if (decision.denial === "auth-required") {
+    return new FilmError("auth-required", 401, decision.message);
+  }
+  if (decision.denial === "budget-exhausted") {
+    return new FilmError("credit-exhausted", 402, decision.message);
+  }
+  return new FilmError("cap-reached", 429, decision.message);
 }
 
 function mimeTypeForPhoto(photo: Photo): OmniReferenceImageMimeType {
