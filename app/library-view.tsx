@@ -18,13 +18,13 @@ import {
   GeneratedFilmShelf,
   GenerationOverlay,
   ShowcaseFilmCard,
-  useFilmGeneration,
 } from "./film-generation";
 import {
   GuidedWalkthrough,
   openGuidedWalkthrough,
 } from "./guided-walkthrough";
 import { SceneGenerator } from "./scene-generator";
+import { useFilmGeneration } from "./use-film-generation";
 import type { Collection, Photo } from "../types/library";
 
 export const MAX_SELECTED_PHOTOS = 8;
@@ -81,6 +81,7 @@ function isStoredSceneCollection(value: unknown): value is Collection {
         photo.id.startsWith("scene.v1.") &&
         typeof photo.file === "string" &&
         typeof photo.src === "string" &&
+        // Integrity check: restored session state must preserve the current file/src mapping.
         photo.file === photo.src &&
         (/^\/collections\//u.test(photo.src) ||
           /^https:\/\/[^/]+\.blob\.vercel-storage\.com\//u.test(photo.src)) &&

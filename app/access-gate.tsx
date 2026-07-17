@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_CONTACT_EMAIL } from "../lib/access-shared";
+
 export interface AccessState {
   signedIn: boolean;
   email: string | null;
@@ -13,7 +15,7 @@ const INITIAL: AccessState = {
   signedIn: false,
   email: null,
   tier: null,
-  contactEmail: "hvmerk.work@gmail.com",
+  contactEmail: DEFAULT_CONTACT_EMAIL,
 };
 
 export function useAccess(): {
