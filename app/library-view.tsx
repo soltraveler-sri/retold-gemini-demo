@@ -18,6 +18,10 @@ import {
   ShowcaseFilmCard,
   useFilmGeneration,
 } from "./film-generation";
+import {
+  GuidedWalkthrough,
+  openGuidedWalkthrough,
+} from "./guided-walkthrough";
 import { SceneGenerator } from "./scene-generator";
 import type { Collection, Photo } from "../types/library";
 
@@ -610,13 +614,11 @@ export function LibraryView({
             </p>
             <button
               className="mt-4 inline-flex items-center gap-2 border-b border-[#8c5746]/35 pb-1 text-[12px] font-semibold text-[#8c5746] transition hover:border-[#8c5746] hover:text-[#6f4436] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8c5746]"
-              onClick={() =>
-                setActiveShowcaseCollectionId(libraryCollections[0]?.id ?? null)
-              }
+              onClick={() => openGuidedWalkthrough()}
               type="button"
             >
               <span aria-hidden="true">▶</span>
-              Watch an example first
+              Watch the guided walkthrough
             </button>
             <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#3f3b35]">
               {libraryCollections.length} moments · {photoCount} photos
@@ -778,6 +780,8 @@ export function LibraryView({
           onClose={() => setActiveShowcaseCollectionId(null)}
         />
       ) : null}
+
+      <GuidedWalkthrough collections={libraryCollections} />
     </main>
   );
 }
