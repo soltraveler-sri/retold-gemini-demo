@@ -10,6 +10,12 @@ import {
 
 import Image from "next/image";
 
+import {
+  FilmLightbox,
+  GeneratedFilmShelf,
+  GenerationOverlay,
+  useFilmGeneration,
+} from "./film-generation";
 import type { Collection, Photo } from "../types/library";
 
 export const MAX_SELECTED_PHOTOS = 6;
@@ -319,6 +325,8 @@ export function LibraryView({
     setSelection(EMPTY_SELECTION);
     setCapWasHit(false);
   }, []);
+  const filmGeneration = useFilmGeneration(clearSelection);
+  const startGeneration = filmGeneration.start;
 
   const applyDrag = useCallback(
     (drag: DragState, currentIndex: number) => {
@@ -444,8 +452,13 @@ export function LibraryView({
   );
 
   const handleCreate = useCallback(() => {
-    // Intentionally reserved for issue #6.
-  }, []);
+    if (!activeCollection || !selection.photoIds.length) return;
+    const photos = selection.photoIds
+      .map((id) => activeCollection.photos.find((photo) => photo.id === id))
+      .filter((photo): photo is Photo => Boolean(photo));
+    if (!photos.length) return;
+    startGeneration({ collection: activeCollection, photos });
+  }, [activeCollection, selection.photoIds, startGeneration]);
 
   return (
     <main className="min-h-screen bg-[#fbfaf7] text-[#25231f]">
@@ -558,6 +571,13 @@ export function LibraryView({
                   />
                 ))}
               </div>
+              <GeneratedFilmShelf
+                collection={collection}
+                films={filmGeneration.films.filter(
+                  (film) => film.collectionId === collection.id,
+                )}
+                onOpen={filmGeneration.openFilm}
+              />
             </section>
           ))}
         </div>
@@ -581,6 +601,7 @@ export function LibraryView({
         >
           <button
             className="gemini-action flex h-12 items-center gap-2.5 whitespace-nowrap rounded-[16px] bg-[#25231f] px-4 text-[13px] font-semibold text-white shadow-[0_6px_18px_rgba(37,35,31,0.18)] transition hover:-translate-y-px hover:bg-[#34312c] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8c5746] active:translate-y-0 sm:px-5"
+            disabled={filmGeneration.isGenerating}
             onClick={handleCreate}
             type="button"
           >
@@ -621,6 +642,24 @@ export function LibraryView({
           Concept demo — not affiliated with Google
         </div>
       )}
+
+      {filmGeneration.generation ? (
+        <GenerationOverlay
+          generation={filmGeneration.generation}
+          onDismiss={filmGeneration.dismissError}
+          onRetry={filmGeneration.retry}
+        />
+      ) : null}
+
+      {filmGeneration.activeFilm ? (
+        <FilmLightbox
+          collection={collections.find(
+            (collection) => collection.id === filmGeneration.activeFilm?.collectionId,
+          )}
+          film={filmGeneration.activeFilm}
+          onClose={filmGeneration.closeFilm}
+        />
+      ) : null}
     </main>
   );
 }
